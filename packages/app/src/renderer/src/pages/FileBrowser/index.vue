@@ -55,6 +55,7 @@
 import { NButton, NTag, NText } from "naive-ui";
 import { fileBrowserApi, commonApi } from "@renderer/apis";
 import watchApi, { watchLabel } from "@renderer/apis/watchHistory";
+import WatchToggleButton from "@renderer/components/WatchToggleButton.vue";
 import { useConfirm } from "@renderer/hooks";
 import { useNotice } from "@renderer/hooks/useNotice";
 import { toVideoPlayerPage } from "@renderer/utils/pages";
@@ -395,13 +396,11 @@ const columns = computed<DataTableColumns<FileBrowserItem>>(() => [
       ];
       if (row.fileKind === "video") {
         actions.push(
-          h(
-            NButton,
-            { text: true, onClick: () => markWatch(row) },
-            {
-              default: () => (row.watch?.completed ? "标记未看" : "标记已看完"),
-            },
-          ),
+          h(WatchToggleButton, {
+            compact: true,
+            completed: row.watch?.completed,
+            onClick: () => markWatch(row),
+          }),
         );
         actions.unshift(
           h(

@@ -8,19 +8,23 @@
     <n-progress
       v-if="watch?.duration"
       type="line"
-      :percentage="Math.min(100, Math.round((watch.position / watch.duration) * 100))"
+      :percentage="
+        watch.completed ? 100 : Math.min(100, Math.round((watch.position / watch.duration) * 100))
+      "
+      :status="watch.completed ? 'success' : 'default'"
       :show-indicator="false"
     />
     <div class="watch-card-actions">
       <n-button type="primary" @click="$emit('play')">{{
         watch?.position && !watch.completed ? "继续观看" : "播放"
       }}</n-button>
-      <n-button @click="$emit('mark')">{{ watch?.completed ? "标记未看" : "标记已看完" }}</n-button>
+      <WatchToggleButton :completed="watch?.completed" @click="$emit('mark')" />
     </div>
   </article>
 </template>
 <script setup lang="ts">
 import { watchLabel, type WatchState } from "@renderer/apis/watchHistory";
+import WatchToggleButton from "./WatchToggleButton.vue";
 defineProps<{ title: string; subtitle?: string; watch?: WatchState | null }>();
 defineEmits<{ (event: "play"): void; (event: "mark"): void }>();
 </script>

@@ -5,7 +5,8 @@ import Router from "@koa/router";
 import { replaceExtName } from "@biliLive-tools/shared/utils/index.js";
 import recordHistory from "@biliLive-tools/shared/recorder/recordHistory.js";
 import { fileCache } from "../index.js";
-import { recordWatchState } from "../services/watchHistory.js";
+import { recordWatchState, sessionRecords } from "../services/watchHistory.js";
+import { streamerService } from "@biliLive-tools/shared/db/index.js";
 
 const router = new Router({
   prefix: "/record-history",
@@ -36,7 +37,7 @@ const resolveVideoFileExt = (videoFile: string) => {
  * @returns
  */
 router.get("/list", async (ctx) => {
-  const { room_id, platform, liveId, page, pageSize, startTime, endTime } = ctx.query;
+  const { room_id, platform, liveId, sessionKey, page, pageSize, startTime, endTime } = ctx.query;
 
   if (!room_id || !platform) {
     ctx.status = 400;
@@ -48,7 +49,7 @@ router.get("/list", async (ctx) => {
   }
 
   try {
-    const result = recordHistory.queryRecordsByRoomAndPlatform({
+    let result = recordHistory.queryRecordsByRoomAndPlatform({
       room_id: room_id as string,
       platform: platform as string,
       liveId: liveId ? String(liveId) : undefined,
@@ -57,6 +58,19 @@ router.get("/list", async (ctx) => {
       startTime: startTime ? parseInt(startTime as string) : undefined,
       endTime: endTime ? parseInt(endTime as string) : undefined,
     });
+    if (sessionKey) {
+      const streamer = streamerService.query({
+        room_id: String(room_id),
+        platform: String(platform),
+      });
+      const records = streamer ? sessionRecords(streamer.id, String(sessionKey)).reverse() : [];
+      const currentPage = Math.max(1, Number(page) || 1);
+      const size = Math.max(1, Math.min(100, Number(pageSize) || 10));
+      result = {
+        data: records.slice((currentPage - 1) * size, currentPage * size),
+        pagination: { total: records.length, page: currentPage, pageSize: size },
+      };
+    }
 
     // 为每条记录计算弹幕密度
     const dataWithDensity = await Promise.all(

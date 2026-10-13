@@ -14,6 +14,34 @@ export interface WatchState {
 }
 
 export type WatchSource = { recordId?: number; videoId?: string };
+export interface SessionWatchState {
+  status: "unwatched" | "watching" | "completed";
+  completed: boolean;
+  completedCount: number;
+  totalCount: number;
+  lastPlayedAt: number;
+}
+export interface WatchSession {
+  key: string;
+  sessionKey: string;
+  streamerId: number;
+  streamerName: string;
+  roomId: string;
+  platform: string;
+  title: string;
+  liveStartTime: number | null;
+  recordStartTime: number;
+  clipCount: number;
+  totalDuration: number;
+  watch: SessionWatchState;
+}
+export interface WatchClip {
+  id: number;
+  title: string;
+  record_start_time: number;
+  video_duration?: number;
+  watch: WatchState | null;
+}
 export type WatchAction = "progress" | "completed" | "unwatched" | "restart";
 export interface WatchUpdate {
   revision: number;
@@ -70,6 +98,34 @@ export const play = async (
 ): Promise<{ videoId: string; filePath: string; recordId?: number }> =>
   (await request.get(`/watch-history/${key}/play`)).data;
 
+export async function sessions(
+  params: {
+    before?: number;
+    offset?: number;
+    limit?: number;
+    status?: string;
+    search?: string;
+    recent?: boolean;
+  } = {},
+) {
+  return (await request.get("/watch-history/sessions", { params })).data as {
+    data: WatchSession[];
+    nextCursor: number | null;
+  };
+}
+export async function sessionClips(session: Pick<WatchSession, "streamerId" | "sessionKey">) {
+  return (await request.post("/watch-history/session-clips", session)).data as {
+    data: WatchClip[];
+    watch: SessionWatchState;
+  };
+}
+export function sessionWatchLabel(watch?: SessionWatchState) {
+  if (!watch) return "未观看";
+  const label = watch.completed ? "已看完" : watch.status === "watching" ? "观看中" : "未观看";
+  if (watch.completed) return `${label} · ${watch.completedCount}/${watch.totalCount} 段`;
+  return `${label} · 已看完 ${watch.completedCount}/${watch.totalCount} 段`;
+}
+
 export function keepaliveUpdate(key: string, payload: WatchUpdate) {
   const authorization =
     window.localStorage.getItem("key") || String(request.defaults.headers.Authorization || "");
@@ -93,4 +149,4 @@ export function watchLabel(state?: WatchState | null) {
   return "未观看";
 }
 
-export default { resolve, get, update, recent, library, play };
+export default { resolve, get, update, recent, library, sessions, sessionClips, play };

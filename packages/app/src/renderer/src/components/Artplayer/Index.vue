@@ -7,9 +7,7 @@
         <n-button size="small" @click="restart">从头播放</n-button>
       </template>
       <n-button v-else-if="watchState" size="small" @click="restart">重新播放</n-button>
-      <n-button v-if="watchState" size="small" @click="mark">
-        {{ watchState.completed ? "标记未看" : "标记已看完" }}
-      </n-button>
+      <WatchToggleButton v-if="watchState" :completed="watchState.completed" @click="mark" />
       <span class="watch-message" role="status">{{ watchMessage }}</span>
     </div>
     <div ref="artRef" class="artplayer" tabindex="0"></div>
@@ -22,6 +20,7 @@ import Hls from "hls.js";
 import mpegts from "mpegts.js";
 import { useWatchProgress } from "@renderer/hooks/useWatchProgress";
 import { watchLabel, type WatchSource } from "@renderer/apis/watchHistory";
+import WatchToggleButton from "../WatchToggleButton.vue";
 
 import artplayerPluginAssJS from "artplayer-plugin-assjs";
 import artplayerPluginHeatmap from "./artplayer-plugin-heatmap";

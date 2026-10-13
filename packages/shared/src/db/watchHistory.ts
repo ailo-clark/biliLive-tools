@@ -91,6 +91,7 @@ export class WatchHistoryStore {
         );
         CREATE INDEX IF NOT EXISTS watch_history_recent ON watch_history(last_played_at DESC);
         CREATE TABLE IF NOT EXISTS watch_identity (key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS watch_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         PRAGMA user_version = 1;
       `);
     })();
@@ -114,6 +115,60 @@ export class WatchHistoryStore {
 
   get(key: string) {
     return this.read(this.db.prepare("SELECT * FROM watch_history WHERE key = ?").get(key));
+  }
+
+  metadata(key: string) {
+    return (
+      this.db.prepare("SELECT value FROM watch_metadata WHERE key = ?").get(key) as
+        | { value: string }
+        | undefined
+    )?.value;
+  }
+
+  setMetadata(key: string, value: string) {
+    this.db.prepare("INSERT OR REPLACE INTO watch_metadata VALUES (?, ?)").run(key, value);
+  }
+
+  /** Snapshot once. Explicit marks/progress from the previous release always win. */
+  initializeExistingRecords(
+    records: Iterable<
+      Parameters<typeof recordWatchKey>[0] & {
+        video_file?: string | null;
+        title?: string | null;
+      }
+    >,
+  ) {
+    if (this.metadata("existing-records-initialized")) return;
+    this.db.transaction(() => {
+      for (const record of records) {
+        if (!record.video_file) continue;
+        this.initializeExistingTarget({
+          key: recordWatchKey(record),
+          filePath: record.video_file,
+          title: record.title || path.basename(record.video_file),
+          recordId: record.id,
+        });
+      }
+      this.setMetadata("existing-records-initialized", String(Date.now()));
+    })();
+  }
+
+  initializeExistingTarget(target: WatchTarget, fingerprint?: string) {
+    const state = this.ensure(target, fingerprint);
+    // Merely listing/resolving a video in v1 created a revision-zero row.
+    if (state.revision === 0 && !state.updatedAt && !state.lastPlayedAt && !state.position) {
+      this.db.prepare("UPDATE watch_history SET completed = 1 WHERE key = ?").run(target.key);
+    }
+  }
+
+  playedRecords() {
+    return this.db
+      .prepare(
+        `SELECT key, record_id AS recordId, last_played_at AS lastPlayedAt
+      FROM watch_history WHERE record_id IS NOT NULL AND last_played_at > 0
+      ORDER BY last_played_at DESC`,
+      )
+      .all() as Array<{ key: string; recordId: number; lastPlayedAt: number }>;
   }
 
   ensure(target: WatchTarget, fingerprint?: string): WatchState {

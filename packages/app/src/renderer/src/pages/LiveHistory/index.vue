@@ -64,7 +64,8 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from "vue-router";
 import { recordHistoryApi } from "../../apis";
-import { NIcon, NButton } from "naive-ui";
+import { NIcon } from "naive-ui";
+import WatchToggleButton from "@renderer/components/WatchToggleButton.vue";
 import watchApi, { watchLabel, type WatchState } from "@renderer/apis/watchHistory";
 import { FolderOpenOutline, DownloadOutline } from "@vicons/ionicons5";
 import { Delete20Regular, PlayCircle24Regular } from "@vicons/fluent";
@@ -90,6 +91,7 @@ interface QueryParams {
   room_id: string;
   platform: string;
   liveId?: string;
+  sessionKey?: string;
   page: number;
   pageSize: number;
   startTime: number | null;
@@ -241,13 +243,11 @@ const allColumns: {
     render: (row: LiveRecord) => {
       const subNodes: VNode[] = [];
       subNodes.push(
-        h(
-          NButton,
-          { size: "tiny", onClick: () => markWatch(row) },
-          {
-            default: () => (row.watch?.completed ? "标记未看" : "标记已看完"),
-          },
-        ),
+        h(WatchToggleButton, {
+          compact: true,
+          completed: row.watch?.completed,
+          onClick: () => markWatch(row),
+        }),
       );
       subNodes.push(
         h(
@@ -369,6 +369,7 @@ const handleQuery = async (): Promise<void> => {
     room_id: queryParams.room_id,
     platform: queryParams.platform,
     liveId: queryParams.liveId,
+    sessionKey: route.query.sessionKey as string | undefined,
     page: queryParams.page,
     pageSize: queryParams.pageSize,
     startTime: queryParams.startTime ?? undefined,

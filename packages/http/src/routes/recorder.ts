@@ -9,6 +9,9 @@ import { pick } from "lodash-es";
 import recorderService from "../services/recorder.js";
 import { appConfig } from "../index.js";
 import streamerDetailService from "@biliLive-tools/shared/db/service/streamerDetailService.js";
+import { recordHistoryService } from "@biliLive-tools/shared/db/index.js";
+import { summarizeSessionWatch } from "@biliLive-tools/shared/db/recordSession.js";
+import { recordWatchState } from "../services/watchHistory.js";
 import { getInfo, getStream } from "@bililive-tools/douyin-recorder/stream.js";
 
 import type { RecorderAPI } from "../types/recorder.js";
@@ -223,6 +226,20 @@ router.get("/detail", async (ctx) => {
     startTime: startTime ? Number(startTime) : undefined,
     endTime: endTime ? Number(endTime) : undefined,
   });
+
+  await Promise.all(
+    payload.data.map(async (session) => {
+      await Promise.all(
+        session.clips.map(async (clip) => {
+          const record = recordHistoryService.query({ id: clip.id });
+          clip.watch = record ? await recordWatchState(record) : null;
+        }),
+      );
+      session.watch = summarizeSessionWatch(
+        session.clips.filter((clip) => clip.video_file).map((clip) => clip.watch || null),
+      );
+    }),
+  );
 
   ctx.body = {
     payload: {

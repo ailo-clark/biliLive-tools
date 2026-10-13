@@ -1,9 +1,9 @@
 import { recordHistoryService, streamerService } from "../index.js";
+import { recordSessionKey, type SessionWatchState } from "../recordSession.js";
+import type { WatchState } from "../watchHistory.js";
 
 import type { LiveHistory } from "../model/recordHistory.js";
 import type { Streamer } from "../model/streamer.js";
-
-const UNKNOWN_LIVE_ID = "__unknown_live_id__";
 
 export interface StreamerDetailQueryArgs {
   room_id: string;
@@ -26,6 +26,7 @@ export interface StreamerDetailClip {
   danma_num?: number;
   interact_num?: number;
   quick_hash?: string;
+  watch?: WatchState | null;
 }
 
 export interface StreamerDetailSessionCard {
@@ -41,6 +42,7 @@ export interface StreamerDetailSessionCard {
   totalDanmaNum: number;
   totalInteractNum: number;
   clips: StreamerDetailClip[];
+  watch?: SessionWatchState;
 }
 
 export interface StreamerDetailSummary {
@@ -75,7 +77,7 @@ const getRecordDuration = (record: LiveHistory) => {
   return 0;
 };
 
-const toSessionKey = (record: LiveHistory) => record.live_id || UNKNOWN_LIVE_ID;
+const toSessionKey = recordSessionKey;
 
 const toSessionCard = (records: LiveHistory[]): StreamerDetailSessionCard => {
   const sortedRecords = [...records].sort(

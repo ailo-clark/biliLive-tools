@@ -153,13 +153,18 @@
                         <th>结束时间</th>
                         <th>录制时长</th>
                         <th>片段数</th>
+                        <th>观看状态</th>
                         <th>弹幕数</th>
                         <th>状态</th>
                         <th>操作</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="(session, index) in result.data" :key="session.sessionKey">
+                      <tr
+                        v-for="(session, index) in result.data"
+                        :key="session.sessionKey"
+                        :class="{ 'watch-completed': session.watch?.completed }"
+                      >
                         <td class="title-cell">
                           <div class="session-name">{{ session.title || "-" }}</div>
                         </td>
@@ -168,6 +173,7 @@
                         <td>{{ formatTime(session.lastRecordTime) }}</td>
                         <td>{{ formatDuration(session.totalDuration, "00:00:00") }}</td>
                         <td>{{ session.clipCount }}</td>
+                        <td class="watch-state-cell">{{ sessionWatchLabel(session.watch) }}</td>
                         <td>{{ formatNumber(session.totalDanmaNum) }}</td>
                         <td>
                           <n-tag size="small" round :type="resolveSessionStatus(index).type">
@@ -228,6 +234,7 @@ import Artplayer from "@renderer/components/Artplayer/Index.vue";
 import AddRecorderModal from "@renderer/pages/Tools/pages/Recorder/components/addModal.vue";
 import { useTitle } from "@vueuse/core";
 import type { RecorderAPI } from "@biliLive-tools/http/types/recorder.js";
+import { sessionWatchLabel } from "@renderer/apis/watchHistory";
 import type { RecentRecordClipItem } from "@renderer/apis/recordHistory";
 
 defineOptions({
@@ -517,6 +524,7 @@ const showSessionDetailPlaceholder = (
       platform: result.recorderInfo.providerId,
       name: result.streamer?.name || streamerInfo.name,
       liveId: session.liveId,
+      sessionKey: session.sessionKey,
     },
   });
 };
@@ -547,10 +555,25 @@ const formatFileSize = (fileSize?: number) => {
 
 onMounted(() => {
   handleQuery();
+  window.addEventListener("focus", refreshWatch);
+  window.addEventListener("watch-history-updated", refreshWatch);
+});
+const refreshWatch = () => {
+  if (!loading.value) void handleQuery();
+};
+onBeforeUnmount(() => {
+  window.removeEventListener("focus", refreshWatch);
+  window.removeEventListener("watch-history-updated", refreshWatch);
 });
 </script>
 
 <style scoped lang="less">
+.watch-completed .session-name {
+  color: #888;
+}
+.watch-state-cell {
+  white-space: nowrap;
+}
 .streamer-detail-page {
   padding: 0 20px 24px;
   min-height: 100%;

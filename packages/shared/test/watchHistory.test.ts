@@ -9,6 +9,9 @@ import {
   recordWatchKey,
   validateWatchBackup,
 } from "../src/db/watchHistory.js";
+import { recordSessionKey, summarizeSessionWatch } from "../src/db/recordSession.js";
+import { initializeExistingVideoFiles } from "../src/db/watchInitialization.js";
+import { initDB, closeDB, getMainDb } from "../src/db/index.js";
 
 describe("independent watch history", () => {
   let directory: string;
@@ -25,7 +28,7 @@ describe("independent watch history", () => {
     fs.rmSync(directory, { recursive: true, force: true });
   });
 
-  it("keeps legacy databases byte-for-byte unchanged and defaults old videos to unwatched", () => {
+  it("keeps legacy databases byte-for-byte unchanged and defaults new videos to unwatched", () => {
     for (const name of ["app.db", "dm0.db"]) {
       const db = new Database(path.join(directory, name));
       db.exec(
@@ -160,5 +163,145 @@ describe("independent watch history", () => {
     expect(
       store.ensure({ ...target, filePath: "/moved/sample.mp4" }, "remuxed-file"),
     ).toMatchObject({ position: 66, revision: 1 });
+  });
+
+  it("initializes old recordings once while preserving progress and explicit unwatched marks", () => {
+    const records = [1, 2, 3, 4].map((id) => ({
+      id,
+      streamer_id: 1,
+      record_start_time: id * 1000,
+      video_file: `/videos/${id}.mp4`,
+      title: `录像 ${id}`,
+    }));
+    const targets = records.map((record) => ({
+      key: recordWatchKey(record),
+      filePath: record.video_file,
+      title: record.title,
+      recordId: record.id,
+    }));
+    store.ensure(targets[0]); // v1 resolved/listed, never actually watched
+    store.ensure(targets[1]);
+    store.update(targets[1].key, { revision: 0, action: "progress", position: 37, duration: 120 });
+    store.ensure(targets[2]);
+    store.update(targets[2].key, { revision: 0, action: "unwatched" });
+    store.initializeExistingRecords(records);
+    expect(store.get(targets[0].key)).toMatchObject({
+      completed: true,
+      revision: 0,
+      lastPlayedAt: 0,
+    });
+    expect(store.get(targets[1].key)).toMatchObject({
+      completed: false,
+      position: 37,
+      revision: 1,
+    });
+    expect(store.get(targets[2].key)).toMatchObject({ completed: false, revision: 1 });
+    expect(store.get(targets[3].key)?.completed).toBe(true);
+    store.update(targets[0].key, { revision: 0, action: "unwatched" });
+    const newRecord = { ...records[0], id: 5, record_start_time: 5000 };
+    store.close();
+    store = new WatchHistoryStore(directory);
+    store.initializeExistingRecords([...records, newRecord]);
+    expect(store.get(targets[0].key)?.completed).toBe(false);
+    expect(store.ensure({ ...targets[0], key: recordWatchKey(newRecord) }).completed).toBe(false);
+    expect(store.recent().map((item) => item.key)).toEqual([targets[1].key]);
+  });
+
+  it("snapshots standalone files once and leaves new/replaced files unwatched", async () => {
+    const root = path.join(directory, "videos");
+    fs.mkdirSync(root);
+    const oldFile = path.join(root, "old.mp4");
+    fs.writeFileSync(oldFile, Buffer.alloc(70000, 1));
+    const oldKey = await fileWatchKey(oldFile);
+    const db = new Database(path.join(directory, "app.db"));
+    db.exec("CREATE TABLE record_history (id INTEGER, video_file TEXT)");
+    const before = fs.readFileSync(path.join(directory, "app.db"));
+    store.initializeExistingRecords([]);
+    store.setMetadata("existing-records-initialized", String(fs.statSync(oldFile).birthtimeMs + 1));
+    await initializeExistingVideoFiles(store, db, [root, root]);
+    expect(store.get(oldKey)?.completed).toBe(true);
+    store.update(oldKey, { revision: 0, action: "unwatched" });
+    const newFile = path.join(root, "new.mp4");
+    fs.writeFileSync(newFile, Buffer.alloc(70000, 2));
+    await initializeExistingVideoFiles(store, db, [root]);
+    expect(store.get(oldKey)?.completed).toBe(false);
+    expect(store.get(await fileWatchKey(newFile))).toBeNull();
+    fs.writeFileSync(oldFile, Buffer.alloc(70000, 3));
+    expect(
+      store.ensure({ key: await fileWatchKey(oldFile), filePath: oldFile, title: "替换文件" })
+        .completed,
+    ).toBe(false);
+    db.close();
+    expect(fs.readFileSync(path.join(directory, "app.db"))).toEqual(before);
+  });
+
+  it("retries an interrupted file scan against its original cutoff", async () => {
+    const root = path.join(directory, "retry");
+    fs.mkdirSync(root);
+    const oldFile = path.join(root, "old.mp4");
+    fs.writeFileSync(oldFile, Buffer.alloc(70000, 1));
+    const db = new Database(path.join(directory, "app.db"));
+    db.exec("CREATE TABLE record_history (id INTEGER, video_file TEXT)");
+    store.initializeExistingRecords([]);
+    store.setMetadata("existing-records-initialized", String(fs.statSync(oldFile).birthtimeMs));
+    const newFile = path.join(root, "new.mp4");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    fs.writeFileSync(newFile, Buffer.alloc(70000, 2));
+    await initializeExistingVideoFiles(store, db, [root]);
+    expect(store.get(await fileWatchKey(oldFile))?.completed).toBe(true);
+    expect(store.get(await fileWatchKey(newFile))).toBeNull();
+    db.close();
+  });
+
+  it("backs up the initialization marker so restoring never marks newer recordings watched", async () => {
+    store.initializeExistingRecords([]);
+    const backup = path.join(directory, "initialized.db");
+    await store.backup(backup);
+    store.close();
+    fs.copyFileSync(backup, path.join(directory, "watch-history.db"));
+    store = new WatchHistoryStore(directory);
+    const record = { id: 1, streamer_id: 1, record_start_time: 1000, video_file: "/new.mp4" };
+    store.initializeExistingRecords([record]);
+    expect(store.get(recordWatchKey(record))).toBeNull();
+  });
+
+  it("leaves the main connection writable after restarting an initialized installation", () => {
+    const data = path.join(directory, "restart");
+    fs.mkdirSync(data);
+    initDB(data);
+    getMainDb().exec("CREATE TABLE restart_check (id INTEGER)");
+    closeDB();
+    initDB(data);
+    try {
+      expect(() => getMainDb().exec("INSERT INTO restart_check VALUES (1)")).not.toThrow();
+      expect(getMainDb().prepare("SELECT id FROM restart_check").get()).toEqual({ id: 1 });
+    } finally {
+      closeDB();
+    }
+  });
+
+  it("derives whole-session status from every clip, including partially completed sessions", () => {
+    const unwatched = store.get(target.key)!;
+    const watched = { ...unwatched, completed: true };
+    expect(summarizeSessionWatch([null, unwatched]).status).toBe("unwatched");
+    expect(summarizeSessionWatch([watched, unwatched])).toMatchObject({
+      status: "watching",
+      completedCount: 1,
+      totalCount: 2,
+      completed: false,
+    });
+    expect(summarizeSessionWatch([watched, watched]).status).toBe("completed");
+    expect(summarizeSessionWatch([]).completed).toBe(false);
+  });
+
+  it("separates unidentified sessions and keeps segments with one stream start together", () => {
+    expect(recordSessionKey({ id: 1, live_id: "abc", live_start_time: 1000 })).toBe("live:abc");
+    expect(recordSessionKey({ id: 1, live_start_time: 1000 })).toBe(
+      recordSessionKey({ id: 2, live_start_time: 1000 }),
+    );
+    expect(recordSessionKey({ id: 1, live_start_time: 1000 })).not.toBe(
+      recordSessionKey({ id: 2, live_start_time: 2000 }),
+    );
+    expect(recordSessionKey({ id: 1 })).not.toBe(recordSessionKey({ id: 2 }));
   });
 });

@@ -21,6 +21,15 @@ export const initDB = (dbRootPath: string): void => {
   dbContainer = setupContainer(dbRootPath);
   setExportServices(dbContainer);
   watchHistoryStore = new WatchHistoryStore(dbRootPath);
+  // Construct an SQLite iterator only when it will be consumed. Even an unused
+  // iterator keeps its connection busy and prevents subsequent startup writes.
+  if (!watchHistoryStore.metadata("existing-records-initialized")) {
+    watchHistoryStore.initializeExistingRecords(
+      getMainDb().prepare("SELECT * FROM record_history ORDER BY id").iterate() as Iterable<
+        import("./model/recordHistory.js").LiveHistory
+      >,
+    );
+  }
 };
 
 export const closeDB = (): void => {

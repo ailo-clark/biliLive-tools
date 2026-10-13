@@ -10,6 +10,7 @@ export interface QueryRecordsParams {
   room_id: string;
   platform: string;
   liveId?: string;
+  sessionKey?: string;
   page?: number;
   pageSize?: number;
   startTime?: number;

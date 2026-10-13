@@ -2,7 +2,22 @@ import path from "node:path";
 import fs from "fs-extra";
 import { getMainDb, watchHistoryStore } from "@biliLive-tools/shared/db/index.js";
 import { fileWatchKey, recordWatchKey } from "@biliLive-tools/shared/db/watchHistory.js";
+import { sessionKeySQL, summarizeSessionWatch } from "@biliLive-tools/shared/db/recordSession.js";
 import type { LiveHistory } from "@biliLive-tools/shared/db/model/recordHistory.js";
+
+export function sessionRecords(streamerId: number, sessionKey: string) {
+  return getMainDb()
+    .prepare(
+      `SELECT r.* FROM record_history r WHERE r.streamer_id = ?
+    AND ${sessionKeySQL} = ? AND coalesce(r.video_file, '') != ''
+    ORDER BY r.record_start_time ASC, r.id ASC`,
+    )
+    .all(streamerId, sessionKey) as LiveHistory[];
+}
+
+export async function sessionWatch(records: LiveHistory[]) {
+  return summarizeSessionWatch(await Promise.all(records.map(recordWatchState)));
+}
 
 export async function recordWatchState(record: LiveHistory) {
   const state = watchHistoryStore.get(recordWatchKey(record));

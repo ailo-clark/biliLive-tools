@@ -16,7 +16,8 @@ import { createInterval as checkSubLoop } from "./video/videoSub.js";
 import { check as checkVirtualRecordLoop } from "./task/virtualRecord.js";
 import { createRecorderManager } from "./recorder/index.js";
 import { sendNotify } from "./notify.js";
-import { initDB } from "./db/index.js";
+import { initDB, getMainDb, watchHistoryStore } from "./db/index.js";
+import { initializeExistingVideoFiles } from "./db/watchInitialization.js";
 import { statisticsService } from "./db/index.js";
 
 import type { GlobalConfig } from "@biliLive-tools/types";
@@ -57,6 +58,14 @@ const init = async (config: GlobalConfig) => {
   });
 
   initDB(config.userDataPath);
+  try {
+    await initializeExistingVideoFiles(watchHistoryStore, getMainDb(), [
+      appConfig.get("recorder")?.savePath || "",
+      appConfig.get("webhook")?.recoderFolder || "",
+    ]);
+  } catch (error) {
+    logger.error("初始化已有视频的观看标记失败，下次启动将重试", error);
+  }
 
   container.register({
     appConfig: asValue(appConfig),

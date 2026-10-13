@@ -20,30 +20,26 @@
     <n-alert v-if="error" type="error">{{ error }}</n-alert>
     <n-spin :show="loading">
       <div class="cards">
-        <WatchCard
-          v-for="record in items"
-          :key="record.id"
-          :title="record.title"
-          :subtitle="`${record.streamer_name || record.room_id} · ${new Date(record.record_start_time).toLocaleString()}`"
-          :watch="record.watch"
-          @play="play(record.id)"
-          @mark="mark(record)"
+        <WatchSessionCard
+          v-for="session in items"
+          :key="session.key"
+          :session="session"
+          @updated="refresh"
         />
       </div>
-      <n-empty v-if="!loading && !items.length" description="没有符合条件的录像" />
+      <n-empty v-if="!loading && !items.length" description="没有符合条件的直播场次" />
     </n-spin>
     <n-button v-if="cursor" block :loading="loading" @click="loadMore">加载更多</n-button>
   </div>
 </template>
 <script setup lang="ts">
-import WatchCard from "@renderer/components/WatchCard.vue";
-import watchApi from "@renderer/apis/watchHistory";
-import { playRecord } from "@renderer/utils/pages";
-const items = ref<Awaited<ReturnType<typeof watchApi.library>>["data"]>([]);
+import WatchSessionCard from "@renderer/components/WatchSessionCard.vue";
+import watchApi, { type WatchSession } from "@renderer/apis/watchHistory";
+const items = ref<WatchSession[]>([]);
 const search = ref("");
 const status = ref("all");
 const options = [
-  { label: "全部录像", value: "all" },
+  { label: "全部场次", value: "all" },
   { label: "未观看", value: "unwatched" },
   { label: "观看中", value: "watching" },
   { label: "已看完", value: "completed" },
@@ -57,13 +53,14 @@ async function loadMore() {
   loading.value = true;
   error.value = "";
   try {
-    const result = await watchApi.library({
+    const result = await watchApi.sessions({
       before: cursor.value || undefined,
       status: status.value,
       search: search.value,
     });
     if (current !== generation) return;
-    items.value.push(...result.data);
+    const keys = new Set(items.value.map((session) => session.key));
+    items.value.push(...result.data.filter((session) => !keys.has(session.key)));
     cursor.value = result.nextCursor;
   } catch (e: any) {
     if (current === generation) error.value = String(e?.message || e || "获取录像失败");
@@ -77,27 +74,37 @@ async function load() {
   cursor.value = null;
   await loadMore();
 }
-async function play(id: number) {
-  try {
-    await playRecord(id);
-  } catch (e: any) {
-    error.value = String(e?.message || e || "无法播放");
-  }
-}
-async function mark(record: (typeof items.value)[number]) {
-  try {
-    const state = await watchApi.resolve({ recordId: record.id });
-    await watchApi.update(state.key, {
-      revision: state.revision,
-      action: state.completed ? "unwatched" : "completed",
-    });
+async function refresh() {
+  if (loading.value) return;
+  if (status.value !== "all") {
     await load();
+    return;
+  }
+  // Keep already expanded cards and the user's place in the list.
+  const current = generation;
+  try {
+    const updated = await Promise.all(
+      items.value.map(async (session) => ({
+        ...session,
+        watch: (
+          await watchApi.sessionClips({
+            streamerId: session.streamerId,
+            sessionKey: session.sessionKey,
+          })
+        ).watch,
+      })),
+    );
+    if (current === generation) items.value = updated;
   } catch (e: any) {
-    error.value = String(e?.message || e || "更新状态失败");
+    error.value = String(e?.message || e || "刷新观看状态失败");
   }
 }
 watch(status, load);
-onMounted(load);
+onMounted(() => {
+  void load();
+  window.addEventListener("focus", refresh);
+});
+onBeforeUnmount(() => window.removeEventListener("focus", refresh));
 </script>
 <style scoped>
 .mobile-recordings {
