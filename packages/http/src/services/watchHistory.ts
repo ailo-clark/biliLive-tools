@@ -15,8 +15,12 @@ export function sessionRecords(streamerId: number, sessionKey: string) {
     .all(streamerId, sessionKey) as LiveHistory[];
 }
 
-export async function sessionWatch(records: LiveHistory[]) {
-  return summarizeSessionWatch(await Promise.all(records.map(recordWatchState)));
+export function sessionWatch(records: LiveHistory[]) {
+  // Collapsed session lists need no video I/O, especially when filtering a large
+  // archive. Expanding clips or playing still validates replacement fingerprints.
+  return summarizeSessionWatch(
+    records.map((record) => watchHistoryStore.get(recordWatchKey(record))),
+  );
 }
 
 export async function recordWatchState(record: LiveHistory) {

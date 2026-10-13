@@ -261,4 +261,20 @@ describe("watch history HTTP workflow against legacy recording data", () => {
     ]);
     expect((await (await request("/sessions?status=completed")).json()).data).toEqual([]);
   });
+
+  it("checks file replacements on expansion without re-reading every video in collapsed lists", async () => {
+    const record = dependencies.db.prepare("SELECT * FROM record_history WHERE id = 1").get();
+    fs.writeFileSync(record.video_file, Buffer.alloc(70000, 8));
+    const before = await (await request("/sessions?status=watching")).json();
+    expect(before.data[0].watch.completedCount).toBe(2);
+    const expanded = await (
+      await request("/session-clips", "POST", {
+        streamerId: 1,
+        sessionKey: "live:same-stream",
+      })
+    ).json();
+    expect(expanded.watch).toMatchObject({ completedCount: 0, totalCount: 3, status: "unwatched" });
+    expect(expanded.data[0].watch.position).toBe(0);
+    expect((await (await request("/sessions?status=unwatched")).json()).data).toHaveLength(2);
+  });
 });
