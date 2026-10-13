@@ -1,6 +1,8 @@
 import request from "./request";
+import type { WatchState } from "./watchHistory";
 
 export interface FileBrowserItem {
+  watch?: WatchState | null;
   name: string;
   path: string;
   type: "file" | "directory";

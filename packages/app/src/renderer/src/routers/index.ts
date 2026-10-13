@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from "vue-router";
+import { preferredHome } from "@renderer/utils/viewMode";
 
 const appTitle = "biliLive-tools";
 
@@ -13,6 +14,36 @@ const router = createRouter({
   },
   routes: [
     {
+      path: "/mobile",
+      component: () => import("../pages/Mobile/Layout.vue"),
+      children: [
+        {
+          path: "",
+          name: "MobileHome",
+          component: () => import("../pages/Mobile/Home.vue"),
+          meta: { title: "继续观看" },
+        },
+        {
+          path: "recordings",
+          name: "MobileRecordings",
+          component: () => import("../pages/Mobile/Recordings.vue"),
+          meta: { title: "录像" },
+        },
+        {
+          path: "files",
+          name: "MobileFiles",
+          component: () => import("../pages/Mobile/Files.vue"),
+          meta: { title: "文件" },
+        },
+        {
+          path: "player",
+          name: "MobilePlayer",
+          component: () => import("../pages/VideoPlayer/index.vue"),
+          meta: { title: "视频播放器" },
+        },
+      ],
+    },
+    {
       path: "/login",
       name: "Login",
       component: () => import("../pages/Login/index.vue"),
@@ -22,8 +53,14 @@ const router = createRouter({
       path: "/",
       name: "Main",
       component: () => import("../pages/Main/index.vue"),
-      redirect: "/home",
+      redirect: () => preferredHome(),
       children: [
+        {
+          path: "/watchHistory",
+          name: "WatchHistory",
+          component: () => import("../pages/WatchHistory/index.vue"),
+          meta: { title: "观看历史" },
+        },
         {
           path: "/home",
           name: "Home",

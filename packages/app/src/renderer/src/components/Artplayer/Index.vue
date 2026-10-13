@@ -1,11 +1,27 @@
 <template>
-  <div ref="artRef" class="artplayer" tabindex="0"></div>
+  <div class="artplayer-wrapper">
+    <div v-if="watchSource" class="watch-toolbar">
+      <span>{{ watchLabel(watchState) }}</span>
+      <template v-if="resumeAvailable">
+        <n-button size="small" @click="resume">继续观看</n-button>
+        <n-button size="small" @click="restart">从头播放</n-button>
+      </template>
+      <n-button v-else-if="watchState" size="small" @click="restart">重新播放</n-button>
+      <n-button v-if="watchState" size="small" @click="mark">
+        {{ watchState.completed ? "标记未看" : "标记已看完" }}
+      </n-button>
+      <span class="watch-message" role="status">{{ watchMessage }}</span>
+    </div>
+    <div ref="artRef" class="artplayer" tabindex="0"></div>
+  </div>
 </template>
 
 <script lang="ts" setup>
 import Artplayer from "artplayer";
 import Hls from "hls.js";
 import mpegts from "mpegts.js";
+import { useWatchProgress } from "@renderer/hooks/useWatchProgress";
+import { watchLabel, type WatchSource } from "@renderer/apis/watchHistory";
 
 import artplayerPluginAssJS from "artplayer-plugin-assjs";
 import artplayerPluginHeatmap from "./artplayer-plugin-heatmap";
@@ -50,6 +66,7 @@ const props = withDefaults(
     };
     plugins?: string[];
     isLive?: boolean;
+    watchSource?: WatchSource;
   }>(),
   {
     isLive: false,
@@ -65,6 +82,15 @@ const emits = defineEmits<{
 
 const artRef = ref<HTMLDivElement | null>(null);
 let instance: Artplayer | null = null;
+const {
+  state: watchState,
+  message: watchMessage,
+  resumeAvailable,
+  attach,
+  resume,
+  restart,
+  mark,
+} = useWatchProgress(computed(() => props.watchSource));
 
 onMounted(async () => {
   const plugins: any[] = [];
@@ -151,6 +177,7 @@ onMounted(async () => {
     setting: true,
     playbackRate: props.isLive ? false : true,
     autoplay: props.isLive ? true : false,
+    playsInline: true,
     ...props.option,
     container: artRef.value,
     plugins: plugins,
@@ -247,6 +274,7 @@ ${tsFile}
     instance.artplayerPluginSubtitle = instance?.plugins?.artplayerPluginSubtitle;
   }, 1000);
   await nextTick();
+  attach(instance);
   emits("ready", instance);
   instance.on("error", (error, reconnectTime) => {
     emits("error", { error, reconnectTime });
@@ -335,6 +363,30 @@ onBeforeUnmount(() => {
 .artplayer {
   width: 100%;
   height: 100%;
+  min-height: 0;
+  flex: 1;
+}
+
+.artplayer-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.watch-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-primary, #181818);
+  color: var(--text-primary, inherit);
+  font-size: 13px;
+}
+.watch-message {
+  opacity: 0.75;
+  font-size: 12px;
 }
 
 .artplayer .ASS-box {

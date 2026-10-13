@@ -210,7 +210,25 @@ const footerMenuOptions = computed<MenuOption[]>(() => {
     key: string;
     icon?: () => VNode;
   }[] = [];
+  menus.push({
+    label: () => h(RouterLink, { to: "/watchHistory" }, { default: () => "观看历史" }),
+    key: "WatchHistory",
+  });
   if (isWeb.value) {
+    menus.push({
+      label: () =>
+        h(
+          "a",
+          {
+            onClick: () => {
+              window.localStorage.setItem("view-mode", "mobile");
+              router.push("/mobile");
+            },
+          },
+          { default: () => "手机观看页" },
+        ),
+      key: "mobileWatch",
+    });
     menus.push({
       label: () =>
         h(

@@ -1,5 +1,13 @@
 <template>
   <div class="file-player-page">
+    <n-alert v-if="loading" :show-icon="false">正在加载录像…</n-alert>
+    <n-alert v-if="playbackError" type="error"
+      >{{ playbackError }}。可返回列表重新打开；手机浏览器请优先播放 H.264/AAC 编码的
+      MP4，其他格式可能需要转码。</n-alert
+    >
+    <n-alert v-if="fileType === 'flv' && !playbackError" type="info" :show-icon="false"
+      >FLV 在部分手机浏览器中无法播放，可在电脑版转换为 MP4。</n-alert
+    >
     <!-- <n-card size="small">
       {{ videoUrl }}
       <n-space vertical :size="8">
@@ -20,7 +28,9 @@
         ref="playerRef"
         :option="playerOptions"
         :plugins="['ass', 'danmuku']"
+        :watch-source="{ videoId: currentVideoId, recordId }"
         @ready="handlePlayerReady"
+        @error="playbackError = '视频播放失败或浏览器不支持该格式'"
       />
     </div>
     <!-- <n-empty v-else description="暂时无法生成播放地址" class="player-empty" /> -->
@@ -44,13 +54,19 @@ const route = useRoute();
 const notice = useNotice();
 
 const loading = ref(false);
+const playbackError = ref("");
 const videoUrl = ref("");
+const currentVideoId = ref("");
 const playerRef = ref<any>(null);
 const playerReady = ref(false);
 
 const videoId = computed(() =>
   typeof route.query.videoId === "string" ? route.query.videoId : "",
 );
+const recordId = computed(() => {
+  const id = Number(route.query.recordId);
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined;
+});
 const fileType = computed(() => (typeof route.query.type === "string" ? route.query.type : ""));
 const danmaId = computed(() =>
   typeof route.query.danmaId === "string" ? route.query.danmaId : "",
@@ -102,10 +118,12 @@ const loadVideo = async () => {
 
   loading.value = true;
   try {
-    videoUrl.value = await commonApi.getVideo(videoId.value);
-    // await syncPlayerSource();
+    currentVideoId.value = videoId.value;
+    videoUrl.value = await commonApi.getVideo(currentVideoId.value);
+    await syncPlayerSource();
   } catch (error: any) {
     videoUrl.value = "";
+    playbackError.value = error?.message || String(error || "获取播放地址失败");
     notice.error({
       title: error?.message || error || "获取播放地址失败",
     });
@@ -137,6 +155,7 @@ onMounted(() => {
   flex-direction: column;
   width: 100%;
   height: 100vh;
+  height: 100dvh;
 }
 
 .header {
@@ -152,6 +171,7 @@ onMounted(() => {
   flex: 1;
   display: block;
   background: #000;
+  min-height: 0;
 }
 
 .player-empty {

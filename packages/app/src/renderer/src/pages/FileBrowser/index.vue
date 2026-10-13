@@ -53,7 +53,8 @@
 
 <script setup lang="ts">
 import { NButton, NTag, NText } from "naive-ui";
-import { fileBrowserApi } from "@renderer/apis";
+import { fileBrowserApi, commonApi } from "@renderer/apis";
+import watchApi, { watchLabel } from "@renderer/apis/watchHistory";
 import { useConfirm } from "@renderer/hooks";
 import { useNotice } from "@renderer/hooks/useNotice";
 import { toVideoPlayerPage } from "@renderer/utils/pages";
@@ -327,6 +328,7 @@ const columns = computed<DataTableColumns<FileBrowserItem>>(() => [
             cursor: "pointer",
             display: "inline-block",
             width: "100%",
+            color: row.watch?.completed ? "#888" : undefined,
           },
         },
         { default: () => `📄 ${row.name}` },
@@ -349,6 +351,11 @@ const columns = computed<DataTableColumns<FileBrowserItem>>(() => [
         { default: () => (row.fileKind === "video" ? "视频" : "文件") },
       );
     },
+  },
+  {
+    title: "观看状态",
+    key: "watch",
+    render: (row) => (row.fileKind === "video" ? watchLabel(row.watch) : "--"),
   },
   {
     title: "大小",
@@ -387,6 +394,15 @@ const columns = computed<DataTableColumns<FileBrowserItem>>(() => [
         ),
       ];
       if (row.fileKind === "video") {
+        actions.push(
+          h(
+            NButton,
+            { text: true, onClick: () => markWatch(row) },
+            {
+              default: () => (row.watch?.completed ? "标记未看" : "标记已看完"),
+            },
+          ),
+        );
         actions.unshift(
           h(
             NButton,
@@ -431,6 +447,25 @@ const columns = computed<DataTableColumns<FileBrowserItem>>(() => [
 onMounted(() => {
   fetchList();
 });
+const markWatch = async (row: FileBrowserItem) => {
+  try {
+    const { videoId } = await commonApi.applyVideoId(row.path);
+    const state = await watchApi.resolve({ videoId });
+    row.watch = (
+      await watchApi.update(state.key, {
+        revision: state.revision,
+        action: state.completed ? "unwatched" : "completed",
+      })
+    ).state;
+  } catch (error: any) {
+    notice.error({ title: String(error?.message || error || "更新观看状态失败") });
+  }
+};
+const refreshWatch = () => {
+  if (!loading.value) void fetchList(currentPath.value || undefined);
+};
+onMounted(() => window.addEventListener("focus", refreshWatch));
+onBeforeUnmount(() => window.removeEventListener("focus", refreshWatch));
 </script>
 
 <style scoped>

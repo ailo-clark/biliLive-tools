@@ -45,6 +45,7 @@ import { useRouter } from "vue-router";
 
 import request from "@renderer/apis/request";
 import { commonApi } from "@renderer/apis";
+import { preferredHome } from "@renderer/utils/viewMode";
 
 const notice = useNotification();
 const router = useRouter();
@@ -57,7 +58,7 @@ const login = async () => {
 
   window.localStorage.setItem("api", api.value);
   window.localStorage.setItem("key", key.value);
-  router.push({ name: "Home" });
+  router.push(preferredHome());
 
   request.defaults.baseURL = api.value;
 };
@@ -121,7 +122,7 @@ body {
 
 <style lang="less" scoped>
 .login-card {
-  width: 400px;
+  width: min(400px, calc(100vw - 32px));
   position: absolute;
   top: 50%;
   left: 50%;

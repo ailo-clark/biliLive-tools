@@ -6,6 +6,8 @@ import Router from "@koa/router";
 import { trashItem, getTempPath, uuid } from "@biliLive-tools/shared/utils/index.js";
 import { appConfig, fileCache, config } from "../index.js";
 import multer from "../middleware/multer.js";
+import { fileWatchState } from "../services/watchHistory.js";
+import type { WatchState } from "@biliLive-tools/shared/db/watchHistory.js";
 
 const upload = multer({ dest: os.tmpdir() });
 
@@ -17,6 +19,7 @@ type BrowserItem = {
   mtimeMs: number;
   canDelete: boolean;
   fileKind?: "video" | "danmaku";
+  watch?: WatchState | null;
 };
 
 const router = new Router({
@@ -149,6 +152,7 @@ router.get("/list", async (ctx) => {
       mtimeMs: stat.mtimeMs,
       canDelete: canDeleteFile(filePath),
       fileKind,
+      watch: fileKind === "video" ? await fileWatchState(filePath).catch(() => null) : undefined,
     });
   }
 

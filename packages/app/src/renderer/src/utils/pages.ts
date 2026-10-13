@@ -1,21 +1,26 @@
 import router from "@renderer/routers";
 import { recordHistoryApi, recoderApi, commonApi } from "@renderer/apis";
+import watchApi from "@renderer/apis/watchHistory";
+import { useMobileView } from "@renderer/utils/viewMode";
 
 export async function toVideoPlayerPage(opts: {
   videoFilePath: string;
   danmaId?: string | null;
+  recordId?: number;
 }): Promise<void>;
 export async function toVideoPlayerPage(opts: {
   videoFilePath?: string;
   danmaId?: string | null;
   videoId: string;
   videoType: string;
+  recordId?: number;
 }): Promise<void>;
 export async function toVideoPlayerPage(opts: {
   videoFilePath?: string;
   danmaId?: string | null;
   videoId?: string;
   videoType?: string;
+  recordId?: number;
 }) {
   if (!opts.videoFilePath && !opts.videoId) {
     throw new Error("缺少视频文件路径或视频ID");
@@ -52,8 +57,13 @@ export async function toVideoPlayerPage(opts: {
     if (danmaId) {
       query.danmaId = danmaId;
     }
+    if (opts.recordId) query.recordId = String(opts.recordId);
 
     if (window.isWeb) {
+      if (useMobileView()) {
+        await router.push({ name: "MobilePlayer", query });
+        return;
+      }
       const url = router.resolve({
         name: "VideoPlayer",
         query,
@@ -70,6 +80,21 @@ export async function toVideoPlayerPage(opts: {
   } else {
     throw new Error("无法播放");
   }
+}
+
+export async function playRecord(recordId: number) {
+  const { videoFileId, videoFileExt, danmaFileId } = await recordHistoryApi.getFileInfo(recordId);
+  return toVideoPlayerPage({
+    videoId: videoFileId,
+    videoType: videoFileExt,
+    danmaId: danmaFileId,
+    recordId,
+  });
+}
+
+export async function playWatch(key: string) {
+  const source = await watchApi.play(key);
+  return toVideoPlayerPage({ videoFilePath: source.filePath, recordId: source.recordId });
 }
 
 export async function toLiveVideoPlayerPage(opts: { liveId: string; owner: string }) {

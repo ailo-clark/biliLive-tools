@@ -11,6 +11,9 @@ COPY . .
 # Keep pnpm's store at the same path as the BuildKit cache mount. PNPM_HOME only
 # controls where the pnpm executable is installed; it does not configure the store.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked pnpm install --store-dir=/pnpm/store --frozen-lockfile --ignore-scripts
+# Database compatibility tests exercise the real Node SQLite binding. Electron
+# dependencies remain untouched; the runtime stage installs its own native modules.
+RUN pnpm --filter @biliLive-tools/shared rebuild better-sqlite3
 RUN pnpm run build:base
 
 # ============================================

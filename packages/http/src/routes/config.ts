@@ -8,7 +8,9 @@ import { appConfig, container } from "../index.js";
 import multer from "../middleware/multer.js";
 import { _send } from "@biliLive-tools/shared/notify.js";
 import { getTempPath } from "@biliLive-tools/shared/utils/index.js";
-import { reconnectDB, backupDB, closeDB } from "@biliLive-tools/shared/db/index.js";
+import { reconnectDB, backupDB, backupWatchDB, closeDB } from "@biliLive-tools/shared/db/index.js";
+import { validateWatchBackup } from "@biliLive-tools/shared/db/watchHistory.js";
+import { randomUUID } from "node:crypto";
 
 const router = new Router({
   prefix: "/config",
@@ -131,6 +133,7 @@ async function exportConfig(opts: {
   ffmpegPresetPath: string;
   coverPath: string;
   dbPath: string;
+  watchDbPath: string;
   usedImageSet: Set<string | undefined>;
 }) {
   async function addToZip(file: string) {
@@ -162,6 +165,7 @@ async function exportConfig(opts: {
     addToZip(opts.danmuPresetPath),
     addToZip(opts.ffmpegPresetPath),
     addToZip(opts.dbPath),
+    addToZip(opts.watchDbPath),
     AddCoverToZip(opts.coverPath),
   ]);
 
@@ -189,6 +193,8 @@ router.get("/export", async (ctx) => {
     await fs.ensureDir(backupPath);
     const dbPath = path.join(backupPath, "app.db");
     await backupDB(dbPath);
+    const watchDbPath = path.join(backupPath, "watch-history.db");
+    await backupWatchDB(watchDbPath);
 
     const buffer = await exportConfig({
       configPath,
@@ -197,6 +203,7 @@ router.get("/export", async (ctx) => {
       ffmpegPresetPath,
       coverPath,
       dbPath,
+      watchDbPath,
       usedImageSet,
     });
     ctx.body = buffer;
@@ -222,6 +229,20 @@ router.post("/import", upload.single("file"), async (ctx) => {
 
   const zip = new JSZip();
   const data = await zip.loadAsync(await fs.readFile(file));
+  // Validate the optional new database before touching existing user data.
+  const watchEntry = data.file("watch-history.db");
+  const watchContent = watchEntry ? await watchEntry.async("nodebuffer") : null;
+  if (watchContent) {
+    const stagingPath = path.join(getTempPath(), `watch-import-${randomUUID()}.db`);
+    try {
+      await fs.writeFile(stagingPath, watchContent);
+      validateWatchBackup(stagingPath);
+    } catch {
+      ctx.throw(400, "观看历史备份无效，现有数据未修改");
+    } finally {
+      await fs.remove(stagingPath);
+    }
+  }
   await Promise.all(
     Object.keys(data.files).map(async (filename) => {
       const file = data.files[filename];
@@ -265,6 +286,8 @@ router.post("/import", upload.single("file"), async (ctx) => {
           }
           await fs.writeFile(filePath, content);
           reconnectDB();
+        } else if (filename === "watch-history.db") {
+          // Restore after app.db has finished reconnecting below.
         } else if (filename.startsWith("cover/")) {
           await fs.writeFile(filePath, content);
         } else {
@@ -273,6 +296,20 @@ router.post("/import", upload.single("file"), async (ctx) => {
       }
     }),
   );
+  // Old archives omit this file and must preserve existing watch data.
+  if (watchContent) {
+    const watchPath = path.join(userDataPath, "watch-history.db");
+    await backupWatchDB(`${watchPath}.backup`);
+    closeDB();
+    try {
+      await fs.writeFile(watchPath, watchContent);
+    } catch (error) {
+      await fs.copyFile(`${watchPath}.backup`, watchPath);
+      throw error;
+    } finally {
+      reconnectDB();
+    }
+  }
 
   ctx.body = "success";
 });

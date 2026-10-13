@@ -1,4 +1,5 @@
 import { setupContainer } from "./container.js";
+import { WatchHistoryStore } from "./watchHistory.js";
 
 import type { Database as DatabaseType } from "better-sqlite3";
 import type { Container } from "./container.js";
@@ -13,11 +14,13 @@ export let recordHistoryService: Container["recordHistoryService"];
 export let uploadPartService: Container["uploadPartService"];
 export let danmuService: Container["danmuService"];
 export let subtitleStyleService: Container["subtitleStyleService"];
+export let watchHistoryStore: WatchHistoryStore;
 
 export const initDB = (dbRootPath: string): void => {
   // 依赖注入容器
   dbContainer = setupContainer(dbRootPath);
   setExportServices(dbContainer);
+  watchHistoryStore = new WatchHistoryStore(dbRootPath);
 };
 
 export const closeDB = (): void => {
@@ -25,6 +28,7 @@ export const closeDB = (): void => {
   const danmuDb = dbContainer.resolve("danmuDb");
   if (mainDb) mainDb.close();
   if (danmuDb) danmuDb.close();
+  watchHistoryStore?.close();
 };
 
 export const backupDB = (filename: string) => {
@@ -32,6 +36,8 @@ export const backupDB = (filename: string) => {
   if (mainDb) return mainDb.backup(filename);
   return;
 };
+
+export const backupWatchDB = (filename: string) => watchHistoryStore.backup(filename);
 
 export const reconnectDB = (): void => {
   const dbRootPath = dbContainer.resolve("dbRootPath");

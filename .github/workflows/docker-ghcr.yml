@@ -1,0 +1,143 @@
+name: Publish Docker images to GHCR
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "packages/**"
+      - "docker/**"
+      - "scripts/**"
+      - "patches/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".node-version"
+      - ".dockerignore"
+      - ".github/workflows/docker-ghcr.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image release tag
+        default: watch-mobile-20261013
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-ghcr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.architecture }} images
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [amd64, arm64]
+        include:
+          - architecture: amd64
+            runner: ubuntu-24.04
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare image names
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          echo "base=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-$GITHUB_SHA-${{ matrix.architecture }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: frontend
+          platforms: linux/${{ matrix.architecture }}
+          push: true
+          tags: ${{ steps.image.outputs.base }}-frontend:${{ steps.image.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=frontend-${{ matrix.architecture }}
+          cache-to: type=gha,mode=max,scope=frontend-${{ matrix.architecture }}
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: backend
+          platforms: linux/${{ matrix.architecture }}
+          push: true
+          tags: ${{ steps.image.outputs.base }}-backend:${{ steps.image.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=backend-${{ matrix.architecture }}
+          cache-to: type=gha,mode=max,scope=backend-${{ matrix.architecture }}
+      - name: Build and push fullstack
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: fullstack
+          platforms: linux/${{ matrix.architecture }}
+          push: true
+          build-args: |
+            VITE_DEFAULT_SERVER=/api
+            VITE_FULLSTACK=true
+          tags: ${{ steps.image.outputs.base }}:${{ steps.image.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=fullstack-${{ matrix.architecture }}
+          cache-to: type=gha,mode=max,scope=fullstack-${{ matrix.architecture }}
+
+  publish:
+    name: Publish multi-platform images
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        service: [fullstack, frontend, backend]
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish and verify manifests
+        env:
+          REPOSITORY: ${{ github.repository }}
+          SERVICE: ${{ matrix.service }}
+          RELEASE_TAG: ${{ inputs.tag || 'watch-mobile-20261013' }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$ ]] || { echo "Invalid image tag"; exit 1; }
+          image="ghcr.io/${REPOSITORY,,}"
+          if [[ "$SERVICE" != fullstack ]]; then image="$image-$SERVICE"; fi
+          commit_tag="sha-$GITHUB_SHA"
+          docker buildx imagetools create \
+            --tag "$image:$RELEASE_TAG" \
+            --tag "$image:$commit_tag" \
+            --tag "$image:latest" \
+            "$image:$commit_tag-amd64" "$image:$commit_tag-arm64"
+          docker buildx imagetools inspect "$image:$RELEASE_TAG"
+          echo "### $SERVICE" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$image:$RELEASE_TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"

@@ -5,6 +5,7 @@ import Router from "@koa/router";
 import { replaceExtName } from "@biliLive-tools/shared/utils/index.js";
 import recordHistory from "@biliLive-tools/shared/recorder/recordHistory.js";
 import { fileCache } from "../index.js";
+import { recordWatchState } from "../services/watchHistory.js";
 
 const router = new Router({
   prefix: "/record-history",
@@ -58,13 +59,16 @@ router.get("/list", async (ctx) => {
     });
 
     // 为每条记录计算弹幕密度
-    const dataWithDensity = result.data.map((record) => ({
-      ...record,
-      danma_density:
-        record.danma_num && record.video_duration && record.video_duration > 0
-          ? Math.round((record.danma_num / record.video_duration) * 100) / 100 // 保留两位小数
-          : 0,
-    }));
+    const dataWithDensity = await Promise.all(
+      result.data.map(async (record) => ({
+        ...record,
+        watch: await recordWatchState(record),
+        danma_density:
+          record.danma_num && record.video_duration && record.video_duration > 0
+            ? Math.round((record.danma_num / record.video_duration) * 100) / 100 // 保留两位小数
+            : 0,
+      })),
+    );
 
     ctx.body = {
       code: 200,

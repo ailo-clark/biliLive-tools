@@ -118,6 +118,7 @@
                 <div v-if="recentClips.length > 0" class="clip-card-grid">
                   <div v-for="clip in recentClips" :key="clip.id" class="clip-card">
                     <Artplayer
+                      :watch-source="{ recordId: clip.id, videoId: clip.videoFileId }"
                       style="height: 160px"
                       :option="{
                         url: commonApi.getVideo(clip.videoFileId),

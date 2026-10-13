@@ -84,5 +84,6 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     TextButton: typeof import('./src/components/textButton.vue')['default']
     Tip: typeof import('./src/components/Tip.vue')['default']
+    WatchCard: typeof import('./src/components/WatchCard.vue')['default']
   }
 }

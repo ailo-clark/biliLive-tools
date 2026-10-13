@@ -35,7 +35,12 @@
     <!-- 结果展示 -->
     <div class="result-container" v-if="recordList.length > 0 || loading">
       <n-spin :show="loading">
-        <n-data-table :columns="visibleTableColumns" :data="recordList" :pagination="false" />
+        <n-data-table
+          :columns="visibleTableColumns"
+          :data="recordList"
+          :pagination="false"
+          :row-class-name="(row: LiveRecord) => (row.watch?.completed ? 'watch-completed' : '')"
+        />
 
         <!-- 分页 -->
         <n-pagination
@@ -59,7 +64,8 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from "vue-router";
 import { recordHistoryApi } from "../../apis";
-import { NIcon } from "naive-ui";
+import { NIcon, NButton } from "naive-ui";
+import watchApi, { watchLabel, type WatchState } from "@renderer/apis/watchHistory";
 import { FolderOpenOutline, DownloadOutline } from "@vicons/ionicons5";
 import { Delete20Regular, PlayCircle24Regular } from "@vicons/fluent";
 import { FileOpenOutlined } from "@vicons/material";
@@ -108,6 +114,7 @@ interface LiveRecord {
   interact_num?: number;
   video_duration?: number;
   danma_density?: number | null; // 弹幕密度，弹幕数量/视频时长
+  watch?: WatchState | null;
   [key: string]: any;
 }
 
@@ -153,6 +160,7 @@ const hasQueried = ref<boolean>(false);
 // 列配置
 const columnConfig: ColumnConfig[] = [
   { value: "title", label: "标题" },
+  { value: "watch", label: "观看状态" },
   { value: "live_start_time", label: "开播时间" },
   { value: "record_start_time", label: "视频录制开始" },
   { value: "record_end_time", label: "视频录制结束" },
@@ -169,6 +177,11 @@ const { visibleColumns } = useVisibleColumns({
   columns: columnConfig,
   storageKey: "live-history-visible-columns",
 });
+// Make the new status column visible for existing saved column preferences.
+if (!localStorage.getItem("watch-column-added")) {
+  if (!visibleColumns.value.includes("watch")) visibleColumns.value.unshift("watch");
+  localStorage.setItem("watch-column-added", "true");
+}
 
 // 完整的表格列定义
 const allColumns: {
@@ -176,6 +189,7 @@ const allColumns: {
   title: string;
   render?: (row: LiveRecord) => any;
 }[] = [
+  { title: "观看状态", key: "watch", render: (row) => watchLabel(row.watch) },
   {
     title: "标题",
     key: "title",
@@ -226,6 +240,15 @@ const allColumns: {
     key: "actions",
     render: (row: LiveRecord) => {
       const subNodes: VNode[] = [];
+      subNodes.push(
+        h(
+          NButton,
+          { size: "tiny", onClick: () => markWatch(row) },
+          {
+            default: () => (row.watch?.completed ? "标记未看" : "标记已看完"),
+          },
+        ),
+      );
       subNodes.push(
         h(
           NIcon,
@@ -464,13 +487,37 @@ const previewVideo = async (id: number) => {
     videoId: videoFileId,
     videoType: videoFileExt,
     danmaId: danmaFileId,
+    recordId: id,
   });
 };
+
+const markWatch = async (row: LiveRecord) => {
+  try {
+    const state = await watchApi.resolve({ recordId: row.id });
+    const result = await watchApi.update(state.key, {
+      revision: state.revision,
+      action: state.completed ? "unwatched" : "completed",
+    });
+    row.watch = result.state;
+    window.dispatchEvent(new Event("watch-history-updated"));
+  } catch (error: any) {
+    notice.error({ title: String(error?.message || error || "更新观看状态失败") });
+  }
+};
+
+const refreshWatch = () => {
+  if (streamerInfo.room_id && streamerInfo.platform) void handleQuery();
+};
+onMounted(() => window.addEventListener("focus", refreshWatch));
+onBeforeUnmount(() => window.removeEventListener("focus", refreshWatch));
 </script>
 
 <style scoped>
 .live-history {
   padding: 20px;
+}
+:deep(.watch-completed .n-data-table-td) {
+  color: var(--text-color-disabled, #888);
 }
 
 .query-form,

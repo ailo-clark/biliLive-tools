@@ -45,6 +45,7 @@ export default defineConfig({
           items: [
             { text: "介绍", link: "/guide/introduction" },
             { text: "安装", link: "/guide/installation" },
+            { text: "观看历史与手机观看", link: "/guide/watch-history" },
           ],
         },
         {

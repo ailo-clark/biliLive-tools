@@ -1,4 +1,5 @@
 import request from "./request";
+import type { WatchState } from "./watchHistory";
 
 /**
  * 查询直播记录列表
@@ -16,6 +17,7 @@ export interface QueryRecordsParams {
 }
 
 export interface RecordHistoryItem {
+  watch?: WatchState | null;
   id: number;
   streamer_id: number;
   live_start_time: number;
