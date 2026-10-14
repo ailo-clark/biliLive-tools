@@ -2,17 +2,24 @@ import path from "node:path";
 import fs from "fs-extra";
 import { getMainDb, watchHistoryStore } from "@biliLive-tools/shared/db/index.js";
 import { fileWatchKey, recordWatchKey } from "@biliLive-tools/shared/db/watchHistory.js";
-import { sessionKeySQL, summarizeSessionWatch } from "@biliLive-tools/shared/db/recordSession.js";
+import {
+  sessionKeySQL,
+  summarizeSessionWatch,
+  liveStartMilliseconds,
+} from "@biliLive-tools/shared/db/recordSession.js";
 import type { LiveHistory } from "@biliLive-tools/shared/db/model/recordHistory.js";
 
 export function sessionRecords(streamerId: number, sessionKey: string) {
-  return getMainDb()
-    .prepare(
-      `SELECT r.* FROM record_history r WHERE r.streamer_id = ?
+  const statement = getMainDb().prepare(
+    `SELECT r.* FROM record_history r WHERE r.streamer_id = ?
     AND ${sessionKeySQL} = ? AND coalesce(r.video_file, '') != ''
     ORDER BY r.record_start_time ASC, r.id ASC`,
-    )
-    .all(streamerId, sessionKey) as LiveHistory[];
+  );
+  const records = statement.all(streamerId, sessionKey) as LiveHistory[];
+  if (records.length || !sessionKey.startsWith("start:")) return records;
+  // Preserve existing second-based links without re-normalizing new keys.
+  const time = liveStartMilliseconds(Number(sessionKey.slice(6)));
+  return time ? (statement.all(streamerId, `start:${time}`) as LiveHistory[]) : records;
 }
 
 export function sessionWatch(records: LiveHistory[]) {

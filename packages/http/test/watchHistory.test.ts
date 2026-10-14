@@ -31,6 +31,7 @@ vi.mock("@biliLive-tools/shared/db/index.js", () => ({
   },
 }));
 vi.mock("../src/index.js", () => ({
+  appConfig: { get: () => [] },
   fileCache: {
     get: (key: string) => dependencies.files.get(key),
     setFile: (file: string) => {

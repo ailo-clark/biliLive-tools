@@ -1,13 +1,25 @@
 <template>
   <div class="mobile-watch-layout">
     <header class="mobile-watch-header">
-      <n-button v-if="$route.name === 'MobilePlayer'" quaternary @click="$router.back()"
+      <n-button
+        v-if="
+          ['MobilePlayer', 'MobileSessionPlayer', 'MobileStreamerCalendar'].includes(
+            String($route.name),
+          )
+        "
+        quaternary
+        @click="$router.back()"
         >返回</n-button
       >
       <strong>biliLive-tools</strong>
       <n-button size="small" @click="desktop">电脑版</n-button>
     </header>
-    <main class="mobile-watch-content"><router-view :key="$route.fullPath" /></main>
+    <main
+      class="mobile-watch-content"
+      :class="{ 'session-content': $route.name === 'MobileSessionPlayer' }"
+    >
+      <router-view :key="$route.fullPath" />
+    </main>
     <nav class="mobile-watch-nav" aria-label="观看导航">
       <router-link to="/mobile" exact-active-class="selected">首页</router-link>
       <router-link to="/mobile/recordings" active-class="selected">录像</router-link>
@@ -52,6 +64,9 @@ function desktop() {
   z-index: 0;
   max-width: 900px;
   margin: 0 auto;
+}
+.mobile-watch-content.session-content {
+  max-width: 1400px;
 }
 .mobile-watch-nav {
   position: fixed;

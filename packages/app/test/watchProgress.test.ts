@@ -88,11 +88,11 @@ describe("watch progress lifecycle", () => {
     app?.unmount();
     vi.unstubAllGlobals();
   });
-  function mount(source = ref({ recordId: 1 })) {
+  function mount(source = ref({ recordId: 1 }), onFinished?: () => void) {
     let progress!: ReturnType<typeof useWatchProgress>;
     app = renderer.createApp({
       setup() {
-        progress = useWatchProgress(source);
+        progress = useWatchProgress(source, onFinished);
         return () => null;
       },
     });
@@ -116,6 +116,24 @@ describe("watch progress lifecycle", () => {
       expect(api.update).toHaveBeenCalledWith(
         "record:one",
         expect.objectContaining({ position: 58, revision: 0, action: "progress" }),
+      ),
+    );
+  });
+
+  it("resumes when autoplay has already started before listeners attach", async () => {
+    const { progress } = mount();
+    await vi.waitFor(() => expect(progress.state.value).not.toBeNull());
+    const early = new Player();
+    early.playing = true;
+    progress.attach(early as unknown as Artplayer);
+    expect(early.currentTime).toBe(52);
+    expect(progress.resumeAvailable.value).toBe(false);
+    early.currentTime = 57;
+    early.emit("video:timeupdate");
+    await vi.waitFor(() =>
+      expect(api.update).toHaveBeenCalledWith(
+        "record:one",
+        expect.objectContaining({ position: 57 }),
       ),
     );
   });
@@ -151,6 +169,18 @@ describe("watch progress lifecycle", () => {
     resolveFirst(initial("record:one"));
     await Promise.resolve();
     expect(progress.state.value?.key).toBe("record:two");
+  });
+
+  it("does not reload progress when the parent renders an equivalent source object", async () => {
+    const { progress, source, player } = mount();
+    await vi.waitFor(() => expect(progress.state.value).not.toBeNull());
+    await progress.resume();
+    source.value = { recordId: 1 };
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(api.resolve).toHaveBeenCalledOnce();
+    expect(progress.resumeAvailable.value).toBe(false);
+    expect(player.currentTime).toBe(52);
   });
 
   it("flushes on backgrounding and removes lifecycle handlers on unmount", async () => {
@@ -204,5 +234,60 @@ describe("watch progress lifecycle", () => {
     player.emit("video:timeupdate");
     player.emit("video:pause");
     expect(api.update).toHaveBeenCalledTimes(count);
+  });
+
+  it("waits for queued completion before advancing to the next episode", async () => {
+    const ended = vi.fn();
+    const { progress, player } = mount(undefined, ended);
+    await vi.waitFor(() => expect(progress.state.value).not.toBeNull());
+    await progress.resume();
+    let finishProgress!: (result: any) => void;
+    api.update.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishProgress = resolve;
+      }),
+    );
+    player.currentTime = 60;
+    player.emit("video:timeupdate");
+    player.currentTime = 1000;
+    player.emit("video:ended");
+    expect(ended).not.toHaveBeenCalled();
+    finishProgress({ conflict: false, state: { ...initial(), position: 60, revision: 1 } });
+    await vi.waitFor(() => expect(ended).toHaveBeenCalledOnce());
+    expect(api.update.mock.calls.at(-1)?.[1]).toMatchObject({
+      action: "completed",
+      revision: 1,
+      position: 1000,
+    });
+    expect(progress.state.value?.completed).toBe(true);
+  });
+
+  it("preserves offline completion when the old episode unmounts", async () => {
+    const ended = vi.fn();
+    const { progress, player } = mount(undefined, ended);
+    await vi.waitFor(() => expect(progress.state.value).not.toBeNull());
+    await progress.resume();
+    api.update.mockRejectedValueOnce(new Error("offline"));
+    player.currentTime = 1000;
+    player.emit("video:ended");
+    await vi.waitFor(() => expect(ended).toHaveBeenCalledOnce());
+    app.unmount();
+    expect(
+      JSON.parse(windowTarget.localStorage.getItem("watch-pending:http://backend:record:one"))
+        .action,
+    ).toBe("completed");
+    expect(api.keepalive).not.toHaveBeenCalled();
+  });
+
+  it("pauses and saves the newest position before manually switching episodes", async () => {
+    const { progress, player } = mount();
+    await vi.waitFor(() => expect(progress.state.value).not.toBeNull());
+    await progress.resume();
+    player.currentTime = 71;
+    await progress.persist();
+    expect(progress.state.value?.position).toBe(71);
+    expect(player.playing).toBe(false);
+    app.unmount();
+    expect(api.keepalive).not.toHaveBeenCalled();
   });
 });

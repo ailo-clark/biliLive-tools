@@ -12,7 +12,6 @@ import {
   resolveFileWatch,
   resolveRecordWatch,
   sessionRecords,
-  sessionWatch,
 } from "../services/watchHistory.js";
 import {
   recordSessionKey,
@@ -21,6 +20,12 @@ import {
 } from "@biliLive-tools/shared/db/recordSession.js";
 import { recordWatchKey } from "@biliLive-tools/shared/db/watchHistory.js";
 import type { LiveHistory } from "@biliLive-tools/shared/db/model/recordHistory.js";
+import {
+  streamerLibrary,
+  streamerCalendar,
+  sessionDescription,
+  describeSession,
+} from "../services/watchLibrary.js";
 
 const router = new Router({ prefix: "/watch-history" });
 const keySchema = z.string().regex(/^(record|file):[a-f0-9]{64}$/);
@@ -29,6 +34,52 @@ const updateSchema = z.object({
   action: z.enum(["progress", "completed", "unwatched", "restart"]),
   position: z.number().finite().nonnegative().optional(),
   duration: z.number().finite().nonnegative().optional(),
+});
+
+router.get("/streamers", (ctx) => {
+  const query = z
+    .object({
+      search: z.string().max(200).default(""),
+      offset: z.coerce.number().int().nonnegative().default(0),
+      limit: z.coerce.number().int().min(1).max(100).default(24),
+    })
+    .safeParse(ctx.query);
+  if (!query.success) {
+    ctx.throw(400, "无效的查询参数");
+    return;
+  }
+  ctx.body = streamerLibrary(query.data.search, query.data.offset, query.data.limit);
+});
+
+router.get("/calendar/:streamerId", (ctx) => {
+  const query = z
+    .object({
+      streamerId: z.coerce.number().int().positive(),
+      month: z
+        .string()
+        .regex(/^[1-9]\d{3}-(0[1-9]|1[0-2])$/)
+        .optional(),
+      timeZone: z.string().max(100).optional(),
+    })
+    .safeParse({ ...ctx.query, streamerId: ctx.params.streamerId });
+  if (!query.success) {
+    ctx.throw(400, "无效的月份或主播标识");
+    return;
+  }
+  try {
+    const result = streamerCalendar(query.data.streamerId, query.data.month, query.data.timeZone);
+    if (!result) {
+      ctx.throw(404, "主播不存在");
+      return;
+    }
+    ctx.body = result;
+  } catch (error) {
+    if (error instanceof RangeError) {
+      ctx.throw(400, "无效的时区");
+      return;
+    }
+    throw error;
+  }
 });
 
 router.post("/resolve", async (ctx) => {
@@ -82,6 +133,7 @@ router.get("/sessions", async (ctx) => {
       limit: z.coerce.number().int().min(1).max(100).default(20),
       status: z.enum(["all", "unwatched", "watching", "completed"]).default("all"),
       search: z.string().max(200).default(""),
+      streamerId: z.coerce.number().int().positive().optional(),
       recent: z.enum(["true", "false"]).default("false"),
       offset: z.coerce.number().int().nonnegative().default(0),
     })
@@ -97,26 +149,24 @@ router.get("/sessions", async (ctx) => {
   const candidateSQL = `SELECT r.streamer_id AS streamerId, ${sessionKeySQL} AS sessionKey,
     max(r.id) AS cursor, s.name AS streamerName, s.room_id AS roomId, s.platform
     FROM record_history r JOIN streamer s ON r.streamer_id = s.id
-    WHERE coalesce(r.video_file, '') != ''
+    WHERE coalesce(r.video_file, '') != '' AND (? IS NULL OR r.streamer_id = ?)
     GROUP BY r.streamer_id, ${sessionKeySQL}
     HAVING max(r.id) < ? AND (? = '' OR max(instr(lower(coalesce(r.title, '') || ' ' ||
       coalesce(s.name, '') || ' ' || s.room_id), lower(?))) > 0)
     ORDER BY max(r.id) DESC LIMIT 100`;
-  const build = async (candidate: any) => {
-    const records = sessionRecords(candidate.streamerId, candidate.sessionKey);
-    const watch = await sessionWatch(records);
-    const latest = records.at(-1)!;
-    return {
-      ...candidate,
-      key: `${candidate.streamerId}:${candidate.sessionKey}`,
-      title: latest.title,
-      recordStartTime: records[0].record_start_time,
-      liveStartTime: records[0].live_start_time || null,
-      clipCount: records.length,
-      totalDuration: records.reduce((n, r) => n + (r.video_duration || 0), 0),
-      watch,
-    };
-  };
+  const build = async (candidate: any) => ({
+    ...candidate,
+    ...describeSession(
+      {
+        id: candidate.streamerId,
+        name: candidate.streamerName,
+        roomId: candidate.roomId,
+        platform: candidate.platform,
+        avatar: null,
+      },
+      sessionRecords(candidate.streamerId, candidate.sessionKey),
+    ),
+  });
   if (recent === "true") {
     const candidates = new Map<string, any>();
     const lookup = getMainDb().prepare(`SELECT r.*, s.name AS streamerName, s.room_id AS roomId,
@@ -124,6 +174,7 @@ router.get("/sessions", async (ctx) => {
     for (const played of watchHistoryStore.playedRecords()) {
       const record = lookup.get(played.recordId) as any;
       if (!record || recordWatchKey(record) !== played.key || !record.video_file) continue;
+      if (query.data.streamerId && record.streamer_id !== query.data.streamerId) continue;
       const sessionKey = recordSessionKey(record);
       const key = `${record.streamer_id}:${sessionKey}`;
       if (!candidates.has(key))
@@ -154,7 +205,15 @@ router.get("/sessions", async (ctx) => {
     return;
   }
   while (data.length < limit && !exhausted) {
-    const candidates = getMainDb().prepare(candidateSQL).all(cursor, search, search) as any[];
+    const candidates = getMainDb()
+      .prepare(candidateSQL)
+      .all(
+        query.data.streamerId ?? null,
+        query.data.streamerId ?? null,
+        cursor,
+        search,
+        search,
+      ) as any[];
     if (!candidates.length) {
       exhausted = true;
       break;
@@ -185,7 +244,11 @@ router.post("/session-clips", async (ctx) => {
   const data = await Promise.all(
     records.map(async (record) => ({ ...record, watch: await recordWatchState(record) })),
   );
-  ctx.body = { data, watch: summarizeSessionWatch(data.map((record) => record.watch)) };
+  ctx.body = {
+    data,
+    watch: summarizeSessionWatch(data.map((record) => record.watch)),
+    session: sessionDescription(parsed.data.streamerId, parsed.data.sessionKey),
+  };
 });
 
 // Read existing recording history. Filtering never adds columns/tables to app.db.

@@ -34,6 +34,10 @@ export interface WatchSession {
   clipCount: number;
   totalDuration: number;
   watch: SessionWatchState;
+  startTime?: number;
+  date?: string;
+  crossesMidnight?: boolean;
+  timeZone?: string;
 }
 export interface WatchClip {
   id: number;
@@ -41,6 +45,35 @@ export interface WatchClip {
   record_start_time: number;
   video_duration?: number;
   watch: WatchState | null;
+}
+export interface WatchStreamer {
+  id: number;
+  name: string;
+  roomId: string;
+  platform: string;
+  avatar: string | null;
+  sessionCount: number;
+  unwatchedCount: number;
+  watchingCount: number;
+  completedCount: number;
+  latestSession: WatchSession | null;
+}
+export interface CalendarDay {
+  date: string;
+  sessionCount: number;
+  completedCount: number;
+  totalClips: number;
+  completedClips: number;
+  status: "unwatched" | "watching" | "completed";
+}
+export interface WatchCalendar {
+  streamer: Pick<WatchStreamer, "id" | "name" | "roomId" | "platform" | "avatar">;
+  month: string;
+  timeZone: string;
+  today: string;
+  availableMonths: string[];
+  days: CalendarDay[];
+  sessions: WatchSession[];
 }
 export type WatchAction = "progress" | "completed" | "unwatched" | "restart";
 export interface WatchUpdate {
@@ -59,7 +92,8 @@ export async function update(key: string, payload: WatchUpdate) {
   try {
     return {
       conflict: false,
-      state: (await request.put(`/watch-history/${key}`, payload)).data as WatchState,
+      state: (await request.put(`/watch-history/${key}`, payload, { timeout: 5000 }))
+        .data as WatchState,
     };
   } catch (error: any) {
     // The existing request interceptor returns response bodies, including conflicts.
@@ -100,6 +134,7 @@ export const play = async (
 
 export async function sessions(
   params: {
+    streamerId?: number;
     before?: number;
     offset?: number;
     limit?: number;
@@ -117,7 +152,20 @@ export async function sessionClips(session: Pick<WatchSession, "streamerId" | "s
   return (await request.post("/watch-history/session-clips", session)).data as {
     data: WatchClip[];
     watch: SessionWatchState;
+    session: WatchSession;
   };
+}
+export async function streamers(params: { search?: string; offset?: number } = {}) {
+  return (await request.get("/watch-history/streamers", { params })).data as {
+    data: WatchStreamer[];
+    total: number;
+    nextOffset: number | null;
+    timeZone: string;
+  };
+}
+export async function calendar(streamerId: number, month?: string) {
+  return (await request.get(`/watch-history/calendar/${streamerId}`, { params: { month } }))
+    .data as WatchCalendar;
 }
 export function sessionWatchLabel(watch?: SessionWatchState) {
   if (!watch) return "未观看";
@@ -149,4 +197,15 @@ export function watchLabel(state?: WatchState | null) {
   return "未观看";
 }
 
-export default { resolve, get, update, recent, library, sessions, sessionClips, play };
+export default {
+  resolve,
+  get,
+  update,
+  recent,
+  library,
+  sessions,
+  sessionClips,
+  streamers,
+  calendar,
+  play,
+};

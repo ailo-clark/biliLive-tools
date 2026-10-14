@@ -15,6 +15,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked pnpm inst
 # dependencies remain untouched; the runtime stage installs its own native modules.
 RUN pnpm --filter @biliLive-tools/shared rebuild better-sqlite3
 RUN pnpm run build:base
+RUN pnpm --filter biliLive-tools exec vitest run test/watchProgress.test.ts test/watchCalendar.test.ts test/index.test.ts --environment node
 
 # ============================================
 # 前端构建阶段

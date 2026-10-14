@@ -1,16 +1,22 @@
 import type { LiveHistory } from "./model/recordHistory.js";
 import type { WatchState } from "./watchHistory.js";
 
+export function liveStartMilliseconds(value?: number | null) {
+  if (!value || !Number.isFinite(value) || value <= 0) return null;
+  return value < 100_000_000_000 ? value * 1000 : value;
+}
+
 export function recordSessionKey(record: Pick<LiveHistory, "id" | "live_id" | "live_start_time">) {
   if (record.live_id) return `live:${record.live_id}`;
-  if (record.live_start_time && record.live_start_time > 0)
-    return `start:${record.live_start_time}`;
+  const start = liveStartMilliseconds(record.live_start_time);
+  if (start) return `start:${start}`;
   // Don't merge unrelated unidentified streams into one giant session.
   return `record:${record.id}`;
 }
 
 export const sessionKeySQL = `CASE WHEN coalesce(r.live_id, '') != '' THEN 'live:' || r.live_id
-  WHEN coalesce(r.live_start_time, 0) > 0 THEN 'start:' || r.live_start_time
+  WHEN coalesce(r.live_start_time, 0) > 0 THEN 'start:' ||
+    CASE WHEN r.live_start_time < 100000000000 THEN r.live_start_time * 1000 ELSE r.live_start_time END
   ELSE 'record:' || r.id END`;
 
 export interface SessionWatchState {

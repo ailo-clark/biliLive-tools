@@ -19,7 +19,7 @@ import Artplayer from "artplayer";
 import Hls from "hls.js";
 import mpegts from "mpegts.js";
 import { useWatchProgress } from "@renderer/hooks/useWatchProgress";
-import { watchLabel, type WatchSource } from "@renderer/apis/watchHistory";
+import { watchLabel, type WatchSource, type WatchState } from "@renderer/apis/watchHistory";
 import WatchToggleButton from "../WatchToggleButton.vue";
 
 import artplayerPluginAssJS from "artplayer-plugin-assjs";
@@ -36,6 +36,7 @@ const props = withDefaults(
       fullscreen?: boolean;
       url?: string;
       type?: string;
+      autoplay?: boolean;
       string?: any;
       plugins?: {
         heatmap?: {
@@ -77,10 +78,13 @@ const emits = defineEmits<{
   (event: "seek", value: number): void;
   (event: "video:durationchange", value: number): void;
   (event: "video:canplay", value: Artplayer): void;
+  (event: "finished"): void;
+  (event: "watch-state", state: WatchState | null): void;
 }>();
 
 const artRef = ref<HTMLDivElement | null>(null);
 let instance: Artplayer | null = null;
+let destroyed = false;
 const {
   state: watchState,
   message: watchMessage,
@@ -89,7 +93,12 @@ const {
   resume,
   restart,
   mark,
-} = useWatchProgress(computed(() => props.watchSource));
+  persist,
+} = useWatchProgress(
+  computed(() => props.watchSource),
+  () => emits("finished"),
+);
+watch(watchState, (state) => emits("watch-state", state));
 
 onMounted(async () => {
   const plugins: any[] = [];
@@ -165,6 +174,7 @@ onMounted(async () => {
       }),
     );
   }
+  if (destroyed) return;
   if (artRef.value === null) {
     console.error("artRef is null");
     return;
@@ -273,6 +283,7 @@ ${tsFile}
     instance.artplayerPluginSubtitle = instance?.plugins?.artplayerPluginSubtitle;
   }, 1000);
   await nextTick();
+  if (destroyed) return;
   attach(instance);
   emits("ready", instance);
   instance.on("error", (error, reconnectTime) => {
@@ -342,6 +353,7 @@ const setSubtitleContent = async (content: string) => {
 const video = computed(() => instance);
 
 defineExpose({
+  persist,
   switchUrl,
   video,
   switchAss,
@@ -352,6 +364,7 @@ defineExpose({
 });
 
 onBeforeUnmount(() => {
+  destroyed = true;
   if (instance && instance.destroy) {
     instance.destroy(false);
   }

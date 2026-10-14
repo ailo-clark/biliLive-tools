@@ -68,6 +68,7 @@
                 {{ isRecording ? "停止录制" : "开始录制" }}
               </n-button>
               <n-button type="warning" @click="goToHistory">录制历史</n-button>
+              <n-button v-if="result.streamer" @click="goToCalendar">录播日历</n-button>
               <n-button @click="openRecorderSetting">直播间设置</n-button>
               <n-button @click="goBack">返回</n-button>
             </div>
@@ -444,6 +445,14 @@ const copyRoomId = async () => {
       content: "无法访问剪贴板",
     });
   }
+};
+
+const goToCalendar = () => {
+  if (result.streamer)
+    void router.push({
+      name: "MobileStreamerCalendar",
+      params: { streamerId: result.streamer.id },
+    });
 };
 
 const goToHistory = () => {

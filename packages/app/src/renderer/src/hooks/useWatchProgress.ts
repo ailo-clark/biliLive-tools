@@ -8,7 +8,7 @@ import watchApi, {
 } from "@renderer/apis/watchHistory";
 import request from "@renderer/apis/request";
 
-export function useWatchProgress(source: Ref<WatchSource | undefined>) {
+export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinished?: () => void) {
   const state = ref<WatchState | null>(null);
   const resumeAvailable = ref(false);
   const message = ref("");
@@ -16,6 +16,7 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>) {
   let active = false;
   let disposed = false;
   let saving = false;
+  let inFlight: Promise<void> | null = null;
   let generation = 0;
   let dirty = false;
   let lastSave = 0;
@@ -50,14 +51,25 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>) {
     if (saving) {
       dirty = true;
       if (action !== "progress") queuedAction = action;
+      if (action !== "progress") await inFlight;
       return;
     }
+    const operation = write(action);
+    inFlight = operation;
+    await operation;
+    if (inFlight === operation) inFlight = null;
+  }
+
+  async function write(action: WatchAction) {
     saving = true;
     lastSave = Date.now();
     dirty = false;
-    const key = state.value.key;
+    const key = state.value!.key;
     const update = payload(action);
     const currentGeneration = generation;
+    try {
+      window.localStorage.setItem(pendingKey(), JSON.stringify(update));
+    } catch {}
     try {
       const result = await watchApi.update(key, update);
       if (currentGeneration !== generation || disposed) return;
@@ -88,7 +100,7 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>) {
       if (currentGeneration === generation && queuedAction) {
         const next = queuedAction;
         queuedAction = null;
-        void save(next);
+        await save(next);
       } else if (currentGeneration === generation && dirty && Date.now() - lastSave >= 5000) {
         void save();
       }
@@ -173,7 +185,7 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>) {
 
   function attach(instance: Artplayer) {
     player = instance;
-    instance.on("video:play", () => {
+    const begin = () => {
       if (!state.value) return;
       // If the user plays without choosing, preserve their previous place by resuming.
       if (resumeAvailable.value) {
@@ -181,7 +193,10 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>) {
         resumeAvailable.value = false;
       }
       active = true;
-    });
+    };
+    instance.on("video:play", begin);
+    instance.on("video:playing", begin);
+    if (instance.playing) begin();
     instance.on("video:timeupdate", () => {
       if (active && Date.now() - lastSave >= 5000) void save();
     });
@@ -192,8 +207,22 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>) {
       if (active) void save();
     });
     instance.on("video:ended", () => {
-      if (active && !conflicted) void save("completed");
+      const current = generation;
+      if (conflicted) return;
+      void (async () => {
+        if (active && state.value) await save("completed");
+        if (disposed || current !== generation || conflicted) return;
+        active = false;
+        onFinished?.();
+      })();
     });
+  }
+
+  async function persist() {
+    player?.pause();
+    if (inFlight) await inFlight;
+    if (active && !resumeAvailable.value && !conflicted) await save();
+    active = false;
   }
 
   function flush() {
@@ -214,7 +243,10 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>) {
   window.addEventListener("pagehide", flush);
   window.addEventListener("online", retry);
   watch(
-    source,
+    () =>
+      source.value?.recordId
+        ? `record:${source.value.recordId}`
+        : `file:${source.value?.videoId || ""}`,
     () => {
       void load();
     },
@@ -229,5 +261,5 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>) {
     window.removeEventListener("online", retry);
   });
 
-  return { state, message, resumeAvailable, attach, resume, restart, mark };
+  return { state, message, resumeAvailable, attach, resume, restart, mark, persist };
 }

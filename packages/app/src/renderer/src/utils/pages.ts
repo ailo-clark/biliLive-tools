@@ -1,6 +1,6 @@
 import router from "@renderer/routers";
 import { recordHistoryApi, recoderApi, commonApi } from "@renderer/apis";
-import watchApi from "@renderer/apis/watchHistory";
+import watchApi, { type WatchSession } from "@renderer/apis/watchHistory";
 import { useMobileView } from "@renderer/utils/viewMode";
 
 export async function toVideoPlayerPage(opts: {
@@ -90,6 +90,31 @@ export async function playRecord(recordId: number) {
     danmaId: danmaFileId,
     recordId,
   });
+}
+
+export async function playSession(
+  session: Pick<WatchSession, "streamerId" | "sessionKey">,
+  recordId?: number,
+) {
+  const query: Record<string, string> = {
+    streamerId: String(session.streamerId),
+    sessionKey: session.sessionKey,
+  };
+  if (recordId) query.recordId = String(recordId);
+  if (window.isWeb) {
+    if (router.currentRoute.value.path.startsWith("/mobile") || useMobileView()) {
+      await router.push({ name: "MobileSessionPlayer", query });
+    } else {
+      window.open(router.resolve({ name: "SessionPlayer", query }).href, "_blank");
+    }
+  } else {
+    window.api.common.createSubWindow({
+      routeName: "sessionPlayer",
+      hideAside: true,
+      hideMenuBar: true,
+      query,
+    });
+  }
 }
 
 export async function playWatch(key: string) {

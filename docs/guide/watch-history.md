@@ -11,13 +11,23 @@
 - 电脑版菜单中的「观看历史」显示最近播放、观看中和已看完的录像。
 - 手机登录后默认进入简洁观看页，也可直接打开前端地址的 `#/mobile`。
 - 电脑主播详情的「最近场次」直接显示整场观看状态，无需逐场进入查看。
-- 手机首页提供继续观看和最近场次；首页及「录像」均先展示主播、直播时间与场次状态，展开后显示按时间排序的分段。「录像」可搜索主播、房间号、标题并筛选整场观看状态；「文件」浏览已配置的录制目录。
+- 手机首页提供继续观看和主播卡片；「录像」可切换按主播浏览和按场次搜索、筛选；「文件」浏览已配置的录制目录。
+- 点击主播卡片进入录播日历，默认展示最近有录像的月份。日期格显示场次数，并用圆点、进度环或勾选标明未看、观看中或全部看完。点击日期查看当天全部场次，手机使用底部弹层，电脑使用弹窗。
+- 主播日历支持场次列表视图。卡片上的「最近一场」和首页「继续观看」可直接进入整场播放器，已停用录制的主播仍保留历史入口。电脑版主播详情也可进入日历。
 - 手机页面只提供浏览、播放和观看状态操作。设置、上传、转码、录制管理和删除仍在电脑版。
 - 「电脑版」和「手机观看页」入口可切换视图，浏览器会记住选择。
 
 推荐在手机播放 H.264 视频、AAC 音频的 MP4。FLV、MKV、HEVC 等能否播放取决于设备和浏览器；TS 暂不支持直接播放。此功能不会自动转码或覆盖原文件。手机横屏和原生全屏也支持继续保存进度。
 
 断网时会在当前浏览器暂存待同步的进度，重新打开录像或恢复网络后尝试同步。突然关闭浏览器或设备断电仍可能丢失最后几秒。两个页面同时播放同一录像时，较旧的更新会被拒绝，避免覆盖另一个页面保存的进度；看到冲突提示后重新打开录像。
+
+## 场次播放与日历
+
+进入场次播放器后，默认选择最近播放的未完成分段；没有播放进度时选择第一段未看分段，全部已看完时从第一段开始。也可在分集列表中选择任意一段。每段仍使用原来的独立进度和观看标记，手动跳过的分段不会自动标记已看完。
+
+自动连播默认开启，可通过播放器开关关闭，浏览器会记住设置。分段结束后先保存完成状态，再进入下一段；断网时保留待同步的完成标记。切换分段或返回页面前会补存进度。部分浏览器可能要求再次点击播放按钮，无法播放或已删除的分段会提示错误，可重试或选择其他分段。
+
+日历按服务端配置时区（Docker 的 `TZ`）归档，兼容原历史中的秒／毫秒开播时间。跨午夜直播归到开播日并标注「跨日」。无录制记录不代表主播没有开播。日历汇总不扫描视频文件，播放时仍会校验原录像。
 
 ## Docker 升级与数据保留
 
@@ -53,8 +63,8 @@ pnpm run build:base
 pnpm --filter bililive-cli build
 pnpm --filter biliLive-tools build:webui
 pnpm --filter @biliLive-tools/shared exec vitest run test/watchHistory.test.ts
-pnpm --filter @biliLive-tools/http exec vitest run test/watchHistory.test.ts test/watchBackup.test.ts
-pnpm --filter biliLive-tools exec vitest run test/watchProgress.test.ts --environment node
+pnpm --filter @biliLive-tools/http exec vitest run test/watchHistory.test.ts test/watchBackup.test.ts test/watchCalendar.test.ts
+pnpm --filter biliLive-tools exec vitest run test/watchProgress.test.ts test/watchCalendar.test.ts test/index.test.ts --environment node
 ```
 
 测试覆盖独立数据库的持久化、旧数据库保持不变、冲突保存、观看状态重置、录像标识、文件替换、WAL 备份，以及一次性初始化、手动标记保留、场次分组与完整场次分页、整场状态筛选和鉴权。

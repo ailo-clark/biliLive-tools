@@ -18,7 +18,7 @@ on:
     inputs:
       tag:
         description: Image release tag
-        default: watch-mobile-20261013-r2
+        default: watch-calendar-20261014
         required: true
         type: string
 
@@ -125,7 +125,7 @@ jobs:
         env:
           REPOSITORY: ${{ github.repository }}
           SERVICE: ${{ matrix.service }}
-          RELEASE_TAG: ${{ inputs.tag || 'watch-mobile-20261013-r2' }}
+          RELEASE_TAG: ${{ inputs.tag || 'watch-calendar-20261014' }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$ ]] || { echo "Invalid image tag"; exit 1; }

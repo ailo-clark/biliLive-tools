@@ -41,7 +41,7 @@ import watchApi, {
   type WatchSession,
   type WatchClip,
 } from "@renderer/apis/watchHistory";
-import { playRecord } from "@renderer/utils/pages";
+import { playSession } from "@renderer/utils/pages";
 import WatchCard from "./WatchCard.vue";
 const props = defineProps<{ session: WatchSession }>();
 const emit = defineEmits<{ (event: "updated"): void }>();
@@ -79,7 +79,7 @@ function toggle(event: Event) {
 }
 async function play(id: number) {
   try {
-    await playRecord(id);
+    await playSession(props.session, id);
   } catch (e: any) {
     error.value = String(e?.message || e || "无法播放");
   }

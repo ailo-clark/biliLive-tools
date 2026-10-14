@@ -41,6 +41,18 @@ const router = createRouter({
           component: () => import("../pages/VideoPlayer/index.vue"),
           meta: { title: "视频播放器" },
         },
+        {
+          path: "streamer/:streamerId",
+          name: "MobileStreamerCalendar",
+          component: () => import("../pages/Mobile/Streamer.vue"),
+          meta: { title: "录播日历" },
+        },
+        {
+          path: "session",
+          name: "MobileSessionPlayer",
+          component: () => import("../pages/SessionPlayer/index.vue"),
+          meta: { title: "场次播放器" },
+        },
       ],
     },
     {
@@ -204,6 +216,12 @@ const router = createRouter({
           name: "VideoPlayer",
           component: () => import("../pages/VideoPlayer/index.vue"),
           meta: { keepAlive: false, title: "视频播放器" },
+        },
+        {
+          path: "/sessionPlayer",
+          name: "SessionPlayer",
+          component: () => import("../pages/SessionPlayer/index.vue"),
+          meta: { keepAlive: false, title: "场次播放器" },
         },
         {
           path: "/liveVideoPlayer",

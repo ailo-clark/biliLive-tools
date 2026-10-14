@@ -65,6 +65,7 @@ declare module 'vue' {
     NPopover: typeof import('naive-ui')['NPopover']
     NProgress: typeof import('naive-ui')['NProgress']
     NRadio: typeof import('naive-ui')['NRadio']
+    NRadioButton: typeof import('naive-ui')['NRadioButton']
     NRadioGroup: typeof import('naive-ui')['NRadioGroup']
     NSelect: typeof import('naive-ui')['NSelect']
     NSlider: typeof import('naive-ui')['NSlider']
@@ -86,7 +87,10 @@ declare module 'vue' {
     TextButton: typeof import('./src/components/textButton.vue')['default']
     Tip: typeof import('./src/components/Tip.vue')['default']
     WatchCard: typeof import('./src/components/WatchCard.vue')['default']
+    WatchDayDialog: typeof import('./src/components/WatchDayDialog.vue')['default']
     WatchSessionCard: typeof import('./src/components/WatchSessionCard.vue')['default']
+    WatchSessionEntry: typeof import('./src/components/WatchSessionEntry.vue')['default']
+    WatchStreamerGallery: typeof import('./src/components/WatchStreamerGallery.vue')['default']
     WatchToggleButton: typeof import('./src/components/WatchToggleButton.vue')['default']
   }
 }

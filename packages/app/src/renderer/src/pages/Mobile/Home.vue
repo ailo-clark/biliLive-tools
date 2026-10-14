@@ -1,44 +1,33 @@
 <template>
   <div class="mobile-home">
-    <div class="heading">
-      <h2>继续观看</h2>
-      <n-button :loading="loading" @click="load">刷新</n-button>
-    </div>
-    <n-alert v-if="error" type="error">{{ error }}</n-alert>
-    <n-spin :show="loading">
-      <div class="sessions">
-        <WatchSessionCard
-          v-for="session in watching"
-          :key="session.key"
-          :session="session"
-          @updated="load"
-        />
-      </div>
-      <n-empty v-if="!loading && !watching.length" description="暂无观看中的直播场次" />
+    <section class="continue-section">
       <div class="heading">
-        <h2>最近场次</h2>
-        <router-link to="/mobile/recordings">全部场次</router-link>
+        <h2>继续观看</h2>
+        <n-button :loading="loading" @click="load">刷新</n-button>
       </div>
-      <div class="sessions">
-        <WatchSessionCard
-          v-for="session in latest"
-          :key="session.key"
-          :session="session"
-          @updated="load"
-        />
-      </div>
-      <n-empty
-        v-if="!loading && !latest.length"
-        description="暂无录制场次，可前往文件页浏览已有录像"
-      />
-    </n-spin>
+      <n-alert v-if="error" type="error">{{ error }}</n-alert>
+      <n-spin :show="loading"
+        ><div class="sessions">
+          <WatchSessionEntry
+            v-for="session in watching"
+            :key="session.key"
+            :session="session"
+            continuing
+            @play="play(session)"
+          />
+        </div>
+        <n-empty v-if="!loading && !watching.length" description="暂无观看中的直播场次"
+      /></n-spin>
+    </section>
+    <WatchStreamerGallery />
   </div>
 </template>
 <script setup lang="ts">
-import WatchSessionCard from "@renderer/components/WatchSessionCard.vue";
+import WatchStreamerGallery from "@renderer/components/WatchStreamerGallery.vue";
+import WatchSessionEntry from "@renderer/components/WatchSessionEntry.vue";
 import watchApi, { type WatchSession } from "@renderer/apis/watchHistory";
+import { playSession } from "@renderer/utils/pages";
 const watching = ref<WatchSession[]>([]);
-const latest = ref<WatchSession[]>([]);
 const loading = ref(false);
 const error = ref("");
 let generation = 0;
@@ -47,17 +36,19 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    const [recent, library] = await Promise.all([
-      watchApi.sessions({ recent: true, status: "watching", limit: 6 }),
-      watchApi.sessions({ limit: 6 }),
-    ]);
-    if (current !== generation) return;
-    watching.value = recent.data;
-    latest.value = library.data;
+    const result = await watchApi.sessions({ recent: true, status: "watching", limit: 6 });
+    if (current === generation) watching.value = result.data;
   } catch (e: any) {
-    if (current === generation) error.value = String(e?.message || e || "获取直播场次失败");
+    if (current === generation) error.value = String(e?.message || e || "获取观看进度失败");
   } finally {
     if (current === generation) loading.value = false;
+  }
+}
+async function play(session: WatchSession) {
+  try {
+    await playSession(session);
+  } catch (e: any) {
+    error.value = String(e?.message || e);
   }
 }
 const refresh = () => {
@@ -74,7 +65,10 @@ onBeforeUnmount(() => {
 </script>
 <style scoped>
 .mobile-home {
-  padding: 16px;
+  padding: 20px 16px;
+}
+.continue-section {
+  margin-bottom: 32px;
 }
 .heading {
   display: flex;
@@ -82,9 +76,14 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
 }
+h2 {
+  font-size: 21px;
+  margin: 0;
+}
 .sessions {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 12px;
-  margin: 12px 0;
+  margin: 16px 0;
 }
 </style>
