@@ -71,6 +71,7 @@ describe("watch history archive compatibility", () => {
       position: 66,
       duration: 120,
     });
+    deps.store.setStreamerHidden(20, true);
     const app = new Koa();
     app.use(router.routes());
     server = app.listen(0, "127.0.0.1");
@@ -97,8 +98,10 @@ describe("watch history archive compatibility", () => {
     const zip = await exported();
     expect(zip.file("watch-history.db")).not.toBeNull();
     deps.store.update("file:fixture", { revision: 1, action: "unwatched" });
+    deps.store.setStreamerHidden(20, false);
     expect((await restore(zip)).status).toBe(200);
     expect(deps.store.get("file:fixture")).toMatchObject({ position: 66, revision: 1 });
+    expect(deps.store.hiddenStreamerIds()).toEqual([20]);
     expect(deps.db.prepare("SELECT * FROM legacy").all()).toEqual([{ title: "原录制记录" }]);
   });
   it("imports legacy archives without clearing newer watch data", async () => {
@@ -106,6 +109,7 @@ describe("watch history archive compatibility", () => {
     zip.remove("watch-history.db");
     expect((await restore(zip)).status).toBe(200);
     expect(deps.store.get("file:fixture")?.position).toBe(66);
+    expect(deps.store.hiddenStreamerIds()).toEqual([20]);
     expect(deps.db.prepare("SELECT * FROM legacy").all()).toEqual([{ title: "原录制记录" }]);
   });
   it("rejects a corrupt optional DB before applying any archive contents", async () => {

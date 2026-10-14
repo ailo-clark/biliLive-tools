@@ -52,6 +52,7 @@ export interface WatchStreamer {
   roomId: string;
   platform: string;
   avatar: string | null;
+  hidden: boolean;
   sessionCount: number;
   unwatchedCount: number;
   watchingCount: number;
@@ -155,13 +156,18 @@ export async function sessionClips(session: Pick<WatchSession, "streamerId" | "s
     session: WatchSession;
   };
 }
-export async function streamers(params: { search?: string; offset?: number } = {}) {
+export async function streamers(
+  params: { search?: string; offset?: number; includeHidden?: boolean } = {},
+) {
   return (await request.get("/watch-history/streamers", { params })).data as {
     data: WatchStreamer[];
     total: number;
     nextOffset: number | null;
     timeZone: string;
   };
+}
+export async function setStreamerHidden(streamerId: number, hidden: boolean) {
+  return (await request.put(`/watch-history/streamers/${streamerId}/visibility`, { hidden })).data;
 }
 export async function calendar(streamerId: number, month?: string) {
   return (await request.get(`/watch-history/calendar/${streamerId}`, { params: { month } }))
@@ -206,6 +212,7 @@ export default {
   sessions,
   sessionClips,
   streamers,
+  setStreamerHidden,
   calendar,
   play,
 };

@@ -1,4 +1,4 @@
-import { getMainDb } from "@biliLive-tools/shared/db/index.js";
+import { getMainDb, watchHistoryStore } from "@biliLive-tools/shared/db/index.js";
 import {
   recordSessionKey,
   liveStartMilliseconds,
@@ -112,26 +112,38 @@ function streamerSessions(
     .sort((a, b) => b.startTime - a.startTime || b.lastRecordTime - a.lastRecordTime);
 }
 
-export function streamerLibrary(search: string, offset: number, limit: number) {
+export function streamerLibrary(
+  search: string,
+  offset: number,
+  limit: number,
+  includeHidden = false,
+) {
+  const hidden = new Set(watchHistoryStore.hiddenStreamerIds());
+  const visibility =
+    includeHidden || !hidden.size
+      ? ""
+      : ` AND s.id NOT IN (${[...hidden].map(() => "?").join(",")})`;
+  const parameters = [search, search, ...(includeHidden ? [] : hidden)];
   const filter = `EXISTS (SELECT 1 FROM record_history r WHERE r.streamer_id = s.id
     AND coalesce(r.video_file, '') != '' AND (? = '' OR instr(lower(s.name || ' ' || s.room_id || ' ' || coalesce(r.title, '')), lower(?)) > 0))`;
   const total = (
     getMainDb()
-      .prepare(`SELECT count(*) AS total FROM streamer s WHERE ${filter}`)
-      .get(search, search) as { total: number }
+      .prepare(`SELECT count(*) AS total FROM streamer s WHERE ${filter}${visibility}`)
+      .get(...parameters) as { total: number }
   ).total;
   const rows = getMainDb()
     .prepare(
-      `SELECT s.id FROM streamer s WHERE ${filter}
+      `SELECT s.id FROM streamer s WHERE ${filter}${visibility}
     ORDER BY (SELECT max(record_start_time) FROM record_history WHERE streamer_id = s.id) DESC, s.id DESC LIMIT ? OFFSET ?`,
     )
-    .all(search, search, limit, offset) as Array<{ id: number }>;
+    .all(...parameters, limit, offset) as Array<{ id: number }>;
   const timeZone = libraryTimeZone();
   const data = rows.map((row) => {
     const streamer = libraryStreamer(row.id)!;
     const sessions = streamerSessions(streamer, timeZone);
     return {
       ...streamer,
+      hidden: hidden.has(streamer.id),
       sessionCount: sessions.length,
       unwatchedCount: sessions.filter((session) => session.watch.status === "unwatched").length,
       watchingCount: sessions.filter((session) => session.watch.status === "watching").length,

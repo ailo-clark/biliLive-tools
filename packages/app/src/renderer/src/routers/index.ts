@@ -14,48 +14,6 @@ const router = createRouter({
   },
   routes: [
     {
-      path: "/mobile",
-      component: () => import("../pages/Mobile/Layout.vue"),
-      children: [
-        {
-          path: "",
-          name: "MobileHome",
-          component: () => import("../pages/Mobile/Home.vue"),
-          meta: { title: "继续观看" },
-        },
-        {
-          path: "recordings",
-          name: "MobileRecordings",
-          component: () => import("../pages/Mobile/Recordings.vue"),
-          meta: { title: "录像" },
-        },
-        {
-          path: "files",
-          name: "MobileFiles",
-          component: () => import("../pages/Mobile/Files.vue"),
-          meta: { title: "文件" },
-        },
-        {
-          path: "player",
-          name: "MobilePlayer",
-          component: () => import("../pages/VideoPlayer/index.vue"),
-          meta: { title: "视频播放器" },
-        },
-        {
-          path: "streamer/:streamerId",
-          name: "MobileStreamerCalendar",
-          component: () => import("../pages/Mobile/Streamer.vue"),
-          meta: { title: "录播日历" },
-        },
-        {
-          path: "session",
-          name: "MobileSessionPlayer",
-          component: () => import("../pages/SessionPlayer/index.vue"),
-          meta: { title: "场次播放器" },
-        },
-      ],
-    },
-    {
       path: "/login",
       name: "Login",
       component: () => import("../pages/Login/index.vue"),
@@ -67,6 +25,48 @@ const router = createRouter({
       component: () => import("../pages/Main/index.vue"),
       redirect: () => preferredHome(),
       children: [
+        {
+          path: "/mobile",
+          component: () => import("../pages/Mobile/Layout.vue"),
+          children: [
+            {
+              path: "",
+              name: "MobileHome",
+              component: () => import("../pages/Mobile/Home.vue"),
+              meta: { title: "继续观看" },
+            },
+            {
+              path: "recordings",
+              name: "MobileRecordings",
+              component: () => import("../pages/Mobile/Recordings.vue"),
+              meta: { title: "录像" },
+            },
+            {
+              path: "files",
+              name: "MobileFiles",
+              component: () => import("../pages/Mobile/Files.vue"),
+              meta: { title: "文件" },
+            },
+            {
+              path: "player",
+              name: "MobilePlayer",
+              component: () => import("../pages/VideoPlayer/index.vue"),
+              meta: { title: "视频播放器" },
+            },
+            {
+              path: "streamer/:streamerId",
+              name: "MobileStreamerCalendar",
+              component: () => import("../pages/Mobile/Streamer.vue"),
+              meta: { title: "录播日历" },
+            },
+            {
+              path: "session",
+              name: "MobileSessionPlayer",
+              component: () => import("../pages/SessionPlayer/index.vue"),
+              meta: { title: "场次播放器" },
+            },
+          ],
+        },
         {
           path: "/watchHistory",
           name: "WatchHistory",

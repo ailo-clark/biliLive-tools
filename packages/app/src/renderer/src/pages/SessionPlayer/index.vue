@@ -306,6 +306,7 @@ onBeforeUnmount(() => {
 </script>
 <style scoped>
 .session-player-page {
+  color: var(--watch-text);
   padding: 18px 16px;
 }
 .session-header {
@@ -323,7 +324,7 @@ h1 {
 .session-header p {
   margin: 8px 0 0;
   font-size: 13px;
-  opacity: 0.7;
+  color: var(--watch-secondary);
 }
 .player-notice {
   margin-bottom: 12px;
@@ -346,7 +347,7 @@ h1 {
   overflow: hidden;
 }
 .session-video :deep(.watch-toolbar) {
-  background: var(--bg-primary, #fff);
+  background: var(--watch-surface);
   padding: 8px;
 }
 .video-placeholder {
@@ -369,7 +370,7 @@ h1 {
   min-height: 44px;
 }
 .episode-panel {
-  border: 1px solid #8883;
+  border: 1px solid var(--watch-border);
   border-radius: 16px;
   padding: 16px;
   min-width: 0;
@@ -387,7 +388,7 @@ h2 {
 }
 .episodes-heading p {
   font-size: 12px;
-  opacity: 0.7;
+  color: var(--watch-secondary);
   margin: 7px 0 0;
 }
 .autoplay-setting {
@@ -405,13 +406,13 @@ h2 {
   display: flex;
   align-items: center;
   gap: 4px;
-  border: 1px solid #8882;
+  border: 1px solid var(--watch-border);
   border-radius: 10px;
   padding: 6px;
 }
 .episode.selected {
-  background: #18a05812;
-  border-color: #18a058;
+  background: var(--watch-primary-bg);
+  border-color: var(--watch-primary);
 }
 .episode-select {
   flex: 1;
@@ -422,18 +423,18 @@ h2 {
   border: 0;
   padding: 8px 4px;
   text-align: left;
-  color: inherit;
+  color: var(--watch-text);
   background: transparent;
   font: inherit;
   cursor: pointer;
 }
 .episode-select:focus-visible {
-  outline: 2px solid #18a058;
+  outline: 2px solid var(--watch-primary);
   border-radius: 6px;
 }
 .episode-number {
   font-size: 16px;
-  color: #18a058;
+  color: var(--watch-primary);
   padding: 0 4px;
 }
 .episode-info {
@@ -448,10 +449,10 @@ h2 {
 }
 .episode-info > span {
   font-size: 12px;
-  opacity: 0.7;
+  color: var(--watch-secondary);
 }
 .episode.completed .episode-info strong {
-  color: #888;
+  color: var(--watch-muted);
 }
 @media (min-width: 1000px) {
   .session-player-grid {

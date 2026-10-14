@@ -192,7 +192,7 @@ function dayLabel(date: string) {
 function ring(date: string) {
   const day = days.value.get(date)!;
   const progress = Math.max(5, Math.round((day.completedClips / day.totalClips) * 100));
-  return `conic-gradient(#d99a22 ${progress}%, #8883 0)`;
+  return `conic-gradient(var(--watch-warning) ${progress}%, var(--watch-border) 0)`;
 }
 async function more() {
   const current = generation;
@@ -258,7 +258,7 @@ h1 {
 }
 .profile p {
   margin: 6px 0 0;
-  opacity: 0.65;
+  color: var(--watch-secondary);
   font-size: 13px;
 }
 .view-tools,
@@ -272,7 +272,7 @@ h1 {
   margin-bottom: 18px;
 }
 .calendar-shell {
-  border: 1px solid #8883;
+  border: 1px solid var(--watch-border);
   border-radius: 18px;
   padding: 14px 10px;
 }
@@ -295,15 +295,15 @@ h1 {
 .weekdays {
   text-align: center;
   font-size: 12px;
-  opacity: 0.6;
+  color: var(--watch-secondary);
   margin-bottom: 10px;
 }
 .calendar-day {
   min-height: 78px;
   border: 1px solid transparent;
   border-radius: 10px;
-  background: #88800008;
-  color: inherit;
+  background: var(--watch-soft);
+  color: var(--watch-text);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -313,22 +313,22 @@ h1 {
   font: inherit;
 }
 .calendar-day:hover {
-  background: #18a05812;
+  background: var(--watch-primary-bg);
 }
 .calendar-day:focus-visible,
 .calendar-day.today {
-  border-color: #18a058;
+  border-color: var(--watch-primary);
   outline: none;
 }
 .calendar-day.selected {
-  background: #18a05815;
+  background: var(--watch-primary-bg);
 }
 .calendar-day.outside {
   opacity: 0.3;
   cursor: default;
 }
 .calendar-day.completed {
-  color: #888;
+  color: var(--watch-muted);
 }
 .day-number {
   font-size: 14px;
@@ -341,14 +341,14 @@ h1 {
 }
 .day-count {
   font-size: 10px;
-  opacity: 0.7;
+  color: inherit;
 }
 .unwatched-dot {
   display: inline-block;
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: #2080f0;
+  background: var(--watch-info);
 }
 .progress-ring,
 .legend-progress {
@@ -368,8 +368,8 @@ h1 {
   display: inline-block;
   width: 10px;
   height: 10px;
-  border: 2px solid #d99a22;
-  border-right-color: #8883;
+  border: 2px solid var(--watch-warning);
+  border-right-color: var(--watch-border);
 }
 .legend {
   display: flex;
@@ -377,9 +377,9 @@ h1 {
   gap: 12px;
   margin-top: 18px;
   padding-top: 14px;
-  border-top: 1px solid #8882;
+  border-top: 1px solid var(--watch-border);
   font-size: 11px;
-  opacity: 0.75;
+  color: var(--watch-secondary);
 }
 .legend > span {
   display: inline-flex;
@@ -390,11 +390,11 @@ h1 {
   width: 10px;
   height: 10px;
   border-radius: 3px;
-  border: 1px solid #8885;
+  border: 1px solid var(--watch-border);
 }
 .calendar-note {
   font-size: 12px;
-  opacity: 0.65;
+  color: var(--watch-secondary);
   margin: 14px 0;
 }
 .session-list {

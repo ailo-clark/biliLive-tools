@@ -109,6 +109,8 @@ onMounted(async () => {
           danmuku: [],
           emitter: false,
           heatmap: false,
+          fontSize: 16,
+          speed: 10, // 插件以穿过屏幕的秒数表示速度：10 对应「极慢」。
         }),
       );
     }
@@ -392,12 +394,12 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 8px;
   padding: 8px;
-  background: var(--bg-primary, #181818);
-  color: var(--text-primary, inherit);
+  background: var(--watch-surface);
+  color: var(--watch-text);
   font-size: 13px;
 }
 .watch-message {
-  opacity: 0.75;
+  color: var(--watch-secondary);
   font-size: 12px;
 }
 

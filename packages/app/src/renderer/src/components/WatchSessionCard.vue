@@ -110,7 +110,9 @@ onBeforeUnmount(() => window.removeEventListener("focus", refresh));
 </script>
 <style scoped>
 .session-card {
-  border: 1px solid #8885;
+  color: var(--watch-text);
+  background: var(--watch-surface);
+  border: 1px solid var(--watch-border);
   border-radius: 12px;
   min-width: 0;
 }
@@ -124,7 +126,7 @@ summary::-webkit-details-marker {
   display: none;
 }
 summary:focus-visible {
-  outline: 2px solid #18a058;
+  outline: 2px solid var(--watch-primary);
   border-radius: 12px;
 }
 .session-heading {
@@ -140,12 +142,12 @@ summary:focus-visible {
   overflow-wrap: anywhere;
 }
 .completed {
-  color: #888;
+  color: var(--watch-muted);
 }
 .session-meta {
   margin-top: 8px;
   font-size: 13px;
-  opacity: 0.8;
+  color: var(--watch-secondary);
   overflow-wrap: anywhere;
 }
 .session-state {

@@ -103,8 +103,13 @@ watch(status, load);
 onMounted(() => {
   void load();
   window.addEventListener("focus", refresh);
+  window.addEventListener("watch-library-visibility-updated", load);
 });
-onBeforeUnmount(() => window.removeEventListener("focus", refresh));
+onBeforeUnmount(() => {
+  generation++;
+  window.removeEventListener("focus", refresh);
+  window.removeEventListener("watch-library-visibility-updated", load);
+});
 </script>
 <style scoped>
 .mobile-recordings {

@@ -57,10 +57,12 @@ const refresh = () => {
 onMounted(() => {
   void load();
   window.addEventListener("focus", refresh);
+  window.addEventListener("watch-library-visibility-updated", load);
 });
 onBeforeUnmount(() => {
   generation++;
   window.removeEventListener("focus", refresh);
+  window.removeEventListener("watch-library-visibility-updated", load);
 });
 </script>
 <style scoped>

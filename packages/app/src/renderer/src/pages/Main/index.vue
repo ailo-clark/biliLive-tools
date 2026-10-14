@@ -36,8 +36,14 @@
         </n-layout-footer>
       </n-layout-sider>
 
-      <n-layout :class="['main-container', route.name, { mobile: isMobile }]">
-        <div v-if="isMobile" class="mobile-header">
+      <n-layout
+        :class="[
+          'main-container',
+          route.name,
+          { mobile: isMobile, 'watch-container': isWatchPage },
+        ]"
+      >
+        <div v-if="isMobile && !isWatchPage" class="mobile-header">
           <n-button quaternary class="mobile-menu-trigger" @click="mobileMenuVisible = true">
             <template #icon>
               <n-icon size="36">
@@ -135,6 +141,7 @@ const appConfig = useAppConfig();
 const { userInfo } = storeToRefs(useUserInfoStore());
 
 const route = useRoute();
+const isWatchPage = computed(() => route.path.startsWith("/mobile"));
 const activeKey = ref("Home");
 activeKey.value = route.name as string;
 const collapsed = useStorage("collapsed", false);
@@ -151,7 +158,8 @@ quenuStore.init();
 watch(
   () => route.fullPath,
   () => {
-    activeKey.value = route.name as string;
+    activeKey.value =
+      isWatchPage.value || route.name === "SessionPlayer" ? "watch" : (route.name as string);
     mobileMenuVisible.value = false;
   },
   { immediate: true },
@@ -215,20 +223,6 @@ const footerMenuOptions = computed<MenuOption[]>(() => {
     key: "WatchHistory",
   });
   if (isWeb.value) {
-    menus.push({
-      label: () =>
-        h(
-          "a",
-          {
-            onClick: () => {
-              window.localStorage.setItem("view-mode", "mobile");
-              router.push("/mobile");
-            },
-          },
-          { default: () => "手机观看页" },
-        ),
-      key: "mobileWatch",
-    });
     menus.push({
       label: () =>
         h(
@@ -431,6 +425,11 @@ const menuOptions = computed<MenuOption[]>(() => {
   ];
   const menus = [
     {
+      key: "watch",
+      label: () => h(RouterLink, { to: "/mobile" }, { default: () => "观看" }),
+      icon: renderIcon(VideoClip20Regular),
+    },
+    {
       label: () =>
         h(
           RouterLink,
@@ -591,8 +590,6 @@ initChanglog();
 </script>
 
 <style lang="less">
-@import "../../assets/css/styles.less";
-
 .layout {
   inset: 0;
 }
@@ -613,6 +610,14 @@ initChanglog();
     & > .n-layout-scroll-container {
       padding-right: 0px;
     }
+  }
+}
+
+.main-container.watch-container {
+  margin: 0;
+  & > .n-layout-scroll-container {
+    padding: 0;
+    overflow-x: hidden;
   }
 }
 

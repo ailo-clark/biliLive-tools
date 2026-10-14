@@ -83,7 +83,7 @@ onMounted(() => load());
 .path {
   overflow-wrap: anywhere;
   font-size: 12px;
-  opacity: 0.7;
+  color: var(--watch-secondary);
 }
 .tools {
   margin: 12px 0;

@@ -226,4 +226,62 @@ describe("streamer calendar against independent watch data", () => {
     expect(result.session.sessionKey).toBe(`start:${later}`);
     expect(result.session.clipCount).toBe(2);
   });
+
+  it("hides archived streamers across lists, persists through restart and restores without changing history", async () => {
+    const change = (id: number, body: unknown, auth = true) =>
+      fetch(`${base}/streamers/${id}/visibility`, {
+        method: "PUT",
+        headers: { ...(auth ? { Authorization: "test" } : {}), "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect((await change(20, { hidden: true }, false)).status).toBe(401);
+    expect((await change(-1, { hidden: true })).status).toBe(400);
+    expect((await change(20, { hidden: "true" })).status).toBe(400);
+    expect((await change(999, { hidden: true })).status).toBe(404);
+    expect((await get("/streamers?includeHidden=invalid")).status).toBe(400);
+    const key = recordWatchKey(originalRecords[4]);
+    fixture.store.update(key, { revision: 0, action: "progress", position: 45, duration: 600 });
+    const saved = fixture.store.get(key);
+    expect(
+      (await (await get("/sessions?recent=true")).json()).data.map((s: any) => s.streamerId),
+    ).toContain(20);
+    expect((await change(20, { hidden: true })).status).toBe(200);
+    expect((await change(20, { hidden: true })).status).toBe(200);
+    const visible = await (await get("/streamers?limit=1")).json();
+    expect(visible).toMatchObject({ total: 1, nextOffset: null });
+    expect(visible.data.map((s: any) => s.id)).toEqual([10]);
+    expect((await (await get("/streamers?search=归档")).json()).total).toBe(0);
+    const including = await (await get("/streamers?includeHidden=true&offset=1&limit=1")).json();
+    expect(including.total).toBe(2);
+    expect(including.data[0]).toMatchObject({ id: 20, hidden: true });
+    for (const url of [
+      "/sessions",
+      "/sessions?recent=true",
+      "/library",
+      "/sessions?limit=1&before=4",
+    ])
+      expect(
+        (await (await get(url)).json()).data.every(
+          (s: any) => (s.streamerId ?? s.streamer_id) !== 20,
+        ),
+      ).toBe(true);
+    expect((await (await get("/recent")).json()).every((s: any) => s.recordId !== 5)).toBe(true);
+    // Visibility is a library preference: explicit calendar/session links remain playable.
+    expect((await get("/calendar/20")).status).toBe(200);
+    expect((await (await get("/sessions?streamerId=20")).json()).data).toHaveLength(1);
+    fixture.store.close();
+    fixture.store = new WatchHistoryStore(directory);
+    expect((await (await get("/streamers")).json()).total).toBe(1);
+    expect(fixture.store.get(key)).toEqual(saved);
+    expect((await change(20, { hidden: false })).status).toBe(200);
+    expect((await (await get("/streamers")).json()).total).toBe(2);
+    expect((await (await get("/recent")).json()).some((s: any) => s.recordId === 5)).toBe(true);
+    expect(fixture.store.get(key)).toEqual(saved);
+    expect(fixture.db.prepare("SELECT * FROM record_history ORDER BY id").all()).toEqual(
+      originalRecords,
+    );
+    expect(fixture.db.prepare("SELECT sql FROM sqlite_master ORDER BY name").all()).toEqual(
+      originalSchema,
+    );
+  });
 });

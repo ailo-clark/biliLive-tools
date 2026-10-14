@@ -129,6 +129,22 @@ export class WatchHistoryStore {
     this.db.prepare("INSERT OR REPLACE INTO watch_metadata VALUES (?, ?)").run(key, value);
   }
 
+  hiddenStreamerIds(): number[] {
+    const rows = this.db
+      .prepare("SELECT key FROM watch_metadata WHERE key GLOB 'hidden-streamer:*' AND value = '1'")
+      .all() as Array<{ key: string }>;
+    return rows
+      .map((row) => Number(row.key.slice("hidden-streamer:".length)))
+      .filter((id) => Number.isSafeInteger(id) && id > 0);
+  }
+
+  setStreamerHidden(id: number, hidden: boolean) {
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error("无效的主播标识");
+    const key = `hidden-streamer:${id}`;
+    if (hidden) this.setMetadata(key, "1");
+    else this.db.prepare("DELETE FROM watch_metadata WHERE key = ?").run(key);
+  }
+
   /** Snapshot once. Explicit marks/progress from the previous release always win. */
   initializeExistingRecords(
     records: Iterable<

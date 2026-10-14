@@ -38,4 +38,7 @@ if (instance) {
 const themeStore = useThemeStore();
 </script>
 
-<style lang="less"></style>
+<style lang="less">
+@import "./assets/css/styles.less";
+@import "./assets/css/watch.less";
+</style>

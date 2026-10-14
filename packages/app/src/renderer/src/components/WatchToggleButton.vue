@@ -12,7 +12,7 @@
         :loading="loading"
         @click="$emit('click')"
       >
-        <n-icon :size="20" :color="completed ? '#18a058' : undefined">
+        <n-icon :size="20" :color="completed ? 'var(--watch-primary)' : undefined">
           <CheckmarkCircle v-if="completed" /><CheckmarkCircleOutline v-else />
         </n-icon>
       </n-button>

@@ -40,18 +40,18 @@ const time = computed(() =>
   width: 100%;
   padding: 18px;
   text-align: left;
-  border: 1px solid #8883;
+  border: 1px solid var(--watch-border);
   border-radius: 16px;
-  color: inherit;
-  background: var(--bg-primary, transparent);
+  color: var(--watch-text);
+  background: var(--watch-surface);
   cursor: pointer;
   font: inherit;
 }
 .session-entry:hover {
-  border-color: #18a058;
+  border-color: var(--watch-primary);
 }
 .session-entry:focus-visible {
-  outline: 2px solid #18a058;
+  outline: 2px solid var(--watch-primary);
   outline-offset: 2px;
 }
 .entry-heading,
@@ -67,18 +67,18 @@ const time = computed(() =>
   overflow-wrap: anywhere;
 }
 .entry-title.completed {
-  color: #888;
+  color: var(--watch-muted);
 }
 .entry-meta {
   display: block;
   margin-top: 8px;
   font-size: 13px;
-  opacity: 0.75;
+  color: var(--watch-secondary);
 }
 .cross-day {
   padding: 2px 6px;
-  background: #2080f015;
-  color: #2080f0;
+  background: var(--watch-info-bg);
+  color: var(--watch-info);
   border-radius: 4px;
 }
 .entry-footer {
@@ -89,21 +89,21 @@ const time = computed(() =>
 .entry-state {
   padding: 4px 7px;
   border-radius: 6px;
-  background: #8881;
+  background: var(--watch-soft);
 }
 .entry-state.unwatched {
-  color: #2080f0;
-  background: #2080f015;
+  color: var(--watch-info);
+  background: var(--watch-info-bg);
 }
 .entry-state.watching {
-  color: #b77b0b;
-  background: #f0a02015;
+  color: var(--watch-warning);
+  background: var(--watch-warning-bg);
 }
 .entry-state.completed {
-  color: #888;
+  color: var(--watch-muted);
 }
 .entry-action {
-  color: #18a058;
+  color: var(--watch-primary);
   font-weight: 600;
 }
 </style>

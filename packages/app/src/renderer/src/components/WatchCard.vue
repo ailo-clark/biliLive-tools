@@ -30,8 +30,10 @@ defineEmits<{ (event: "play"): void; (event: "mark"): void }>();
 </script>
 <style scoped>
 .watch-card {
+  color: var(--watch-text);
+  background: var(--watch-surface);
   padding: 16px;
-  border: 1px solid var(--border-color, #8885);
+  border: 1px solid var(--watch-border);
   border-radius: 12px;
   min-width: 0;
 }
@@ -41,13 +43,13 @@ defineEmits<{ (event: "play"): void; (event: "mark"): void }>();
   overflow-wrap: anywhere;
 }
 .watch-card-title.completed {
-  color: #888;
+  color: var(--watch-muted);
 }
 .watch-card-subtitle,
 .watch-card-state {
   margin-top: 8px;
   font-size: 13px;
-  opacity: 0.8;
+  color: var(--watch-secondary);
 }
 .watch-card-actions {
   display: flex;

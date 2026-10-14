@@ -15,10 +15,34 @@
         @keyup.enter="load"
       /><n-button @click="load">搜索</n-button>
     </div>
+    <n-checkbox v-model:checked="includeHidden" class="hidden-filter" @update:checked="load">
+      显示已隐藏主播
+    </n-checkbox>
+    <p v-if="includeHidden">隐藏只影响观看列表，录像文件和观看进度仍会保留，可随时恢复显示。</p>
     <n-alert v-if="error" type="error">{{ error }}</n-alert>
     <n-spin :show="loading">
       <div class="streamer-grid">
         <article v-for="streamer in items" :key="streamer.id" class="streamer-card">
+          <div class="card-tools">
+            <n-tag v-if="streamer.hidden" size="small">已隐藏</n-tag>
+            <n-tooltip>
+              <template #trigger>
+                <n-button
+                  quaternary
+                  circle
+                  class="visibility-button"
+                  :aria-label="`${streamer.hidden ? '恢复显示' : '隐藏主播'} ${streamer.name}`"
+                  :loading="changing === streamer.id"
+                  @click="visibility(streamer)"
+                >
+                  <n-icon :size="20"
+                    ><EyeOutline v-if="streamer.hidden" /><EyeOffOutline v-else
+                  /></n-icon>
+                </n-button>
+              </template>
+              {{ streamer.hidden ? "恢复显示主播" : "隐藏主播（保留录像和进度）" }}
+            </n-tooltip>
+          </div>
           <button
             type="button"
             class="streamer-main"
@@ -69,13 +93,20 @@
   </section>
 </template>
 <script setup lang="ts">
-import { CalendarOutline, ChevronForwardOutline } from "@vicons/ionicons5";
+import {
+  CalendarOutline,
+  ChevronForwardOutline,
+  EyeOffOutline,
+  EyeOutline,
+} from "@vicons/ionicons5";
 import { useRouter } from "vue-router";
 import watchApi, { type WatchStreamer, type WatchSession } from "@renderer/apis/watchHistory";
 import { playSession } from "@renderer/utils/pages";
 const router = useRouter();
 const items = ref<WatchStreamer[]>([]);
 const search = ref("");
+const includeHidden = ref(false);
+const changing = ref<number>();
 const offset = ref<number | null>(null);
 const loading = ref(false);
 const error = ref("");
@@ -86,7 +117,11 @@ async function more() {
   loading.value = true;
   error.value = "";
   try {
-    const result = await watchApi.streamers({ search: search.value, offset: offset.value || 0 });
+    const result = await watchApi.streamers({
+      search: search.value,
+      offset: offset.value || 0,
+      includeHidden: includeHidden.value,
+    });
     if (current !== generation) return;
     const existing = new Set(items.value.map((item) => item.id));
     items.value.push(...result.data.filter((item) => !existing.has(item.id)));
@@ -106,6 +141,19 @@ async function load() {
 }
 function calendar(id: number) {
   void router.push({ name: "MobileStreamerCalendar", params: { streamerId: id } });
+}
+async function visibility(streamer: WatchStreamer) {
+  changing.value = streamer.id;
+  error.value = "";
+  try {
+    await watchApi.setStreamerHidden(streamer.id, !streamer.hidden);
+    window.dispatchEvent(new Event("watch-library-visibility-updated"));
+    await load();
+  } catch (e: any) {
+    error.value = String(e?.message || e || "更新主播显示设置失败");
+  } finally {
+    changing.value = undefined;
+  }
 }
 async function play(session: WatchSession) {
   try {
@@ -147,7 +195,7 @@ h2 {
 p {
   margin: 7px 0 16px;
   font-size: 13px;
-  opacity: 0.65;
+  color: var(--watch-secondary);
 }
 .gallery-search {
   display: flex;
@@ -161,14 +209,31 @@ p {
   margin-bottom: 16px;
 }
 .streamer-card {
-  border: 1px solid #8883;
+  background: var(--watch-surface);
+  color: var(--watch-text);
+  border: 1px solid var(--watch-border);
   border-radius: 18px;
   padding: 18px;
   box-shadow: 0 4px 16px #00000004;
   min-width: 0;
 }
+.hidden-filter {
+  margin: 0 0 16px;
+}
+.card-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 44px;
+  margin: -8px -8px 4px 0;
+  gap: 8px;
+}
+.visibility-button {
+  min-width: 44px;
+  min-height: 44px;
+}
 .streamer-card:hover {
-  border-color: #18a05880;
+  border-color: var(--watch-primary);
 }
 .streamer-main {
   display: flex;
@@ -179,12 +244,12 @@ p {
   border: 0;
   text-align: left;
   background: transparent;
-  color: inherit;
+  color: var(--watch-text);
   font: inherit;
   cursor: pointer;
 }
 .streamer-main:focus-visible {
-  outline: 2px solid #18a058;
+  outline: 2px solid var(--watch-primary);
   border-radius: 8px;
 }
 .streamer-info {
@@ -201,7 +266,7 @@ p {
 .streamer-info > span,
 .latest-time {
   font-size: 12px;
-  opacity: 0.65;
+  color: var(--watch-secondary);
 }
 .streamer-counts {
   display: flex;
@@ -213,20 +278,21 @@ p {
 .streamer-counts span {
   padding: 4px 7px;
   border-radius: 6px;
-  background: #8881;
+  background: var(--watch-soft);
 }
 .streamer-counts .unwatched {
-  color: #2080f0;
-  background: #2080f015;
+  color: var(--watch-info);
+  background: var(--watch-info-bg);
 }
 .streamer-counts .watching {
-  color: #b77b0b;
-  background: #f0a02015;
+  color: var(--watch-warning);
+  background: var(--watch-warning-bg);
 }
 .latest-time {
   margin-top: 14px;
 }
 .streamer-actions {
+  flex-wrap: wrap;
   display: flex;
   justify-content: space-between;
   gap: 6px;

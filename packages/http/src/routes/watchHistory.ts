@@ -25,6 +25,7 @@ import {
   streamerCalendar,
   sessionDescription,
   describeSession,
+  libraryStreamer,
 } from "../services/watchLibrary.js";
 
 const router = new Router({ prefix: "/watch-history" });
@@ -42,13 +43,38 @@ router.get("/streamers", (ctx) => {
       search: z.string().max(200).default(""),
       offset: z.coerce.number().int().nonnegative().default(0),
       limit: z.coerce.number().int().min(1).max(100).default(24),
+      includeHidden: z.enum(["true", "false"]).default("false"),
     })
     .safeParse(ctx.query);
   if (!query.success) {
     ctx.throw(400, "无效的查询参数");
     return;
   }
-  ctx.body = streamerLibrary(query.data.search, query.data.offset, query.data.limit);
+  ctx.body = streamerLibrary(
+    query.data.search,
+    query.data.offset,
+    query.data.limit,
+    query.data.includeHidden === "true",
+  );
+});
+
+router.put("/streamers/:streamerId/visibility", (ctx) => {
+  const parsed = z
+    .object({
+      streamerId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      hidden: z.boolean(),
+    })
+    .safeParse({ ...(ctx.request.body as object), streamerId: ctx.params.streamerId });
+  if (!parsed.success) {
+    ctx.throw(400, "无效的主播或显示设置");
+    return;
+  }
+  if (!libraryStreamer(parsed.data.streamerId)) {
+    ctx.throw(404, "主播不存在");
+    return;
+  }
+  watchHistoryStore.setStreamerHidden(parsed.data.streamerId, parsed.data.hidden);
+  ctx.body = { streamerId: parsed.data.streamerId, hidden: parsed.data.hidden };
 });
 
 router.get("/calendar/:streamerId", (ctx) => {
@@ -121,7 +147,30 @@ router.get("/recent", async (ctx) => {
     ctx.throw(400, "无效的查询参数");
     return;
   }
-  ctx.body = watchHistoryStore.recent(query.data.limit, query.data.offset, query.data.status);
+  const hidden = new Set(watchHistoryStore.hiddenStreamerIds());
+  if (!hidden.size) {
+    ctx.body = watchHistoryStore.recent(query.data.limit, query.data.offset, query.data.status);
+    return;
+  }
+  const lookup = getMainDb().prepare("SELECT streamer_id FROM record_history WHERE id = ?");
+  const visible: ReturnType<typeof watchHistoryStore.recent> = [];
+  let rawOffset = 0;
+  let matched = 0;
+  while (visible.length < query.data.limit) {
+    const batch = watchHistoryStore.recent(100, rawOffset, query.data.status);
+    if (!batch.length) break;
+    rawOffset += batch.length;
+    for (const state of batch) {
+      const record = state.recordId
+        ? (lookup.get(state.recordId) as { streamer_id: number } | undefined)
+        : undefined;
+      if (record && hidden.has(record.streamer_id)) continue;
+      if (matched++ < query.data.offset) continue;
+      visible.push(state);
+      if (visible.length === query.data.limit) break;
+    }
+  }
+  ctx.body = visible;
 });
 
 // Paginate complete sessions, then filter their aggregate state. A matching title
@@ -143,6 +192,7 @@ router.get("/sessions", async (ctx) => {
     return;
   }
   const { limit, status, search, recent, offset } = query.data;
+  const hidden = new Set(watchHistoryStore.hiddenStreamerIds());
   let cursor = query.data.before ?? Number.MAX_SAFE_INTEGER;
   const data: any[] = [];
   let exhausted = false;
@@ -174,6 +224,7 @@ router.get("/sessions", async (ctx) => {
     for (const played of watchHistoryStore.playedRecords()) {
       const record = lookup.get(played.recordId) as any;
       if (!record || recordWatchKey(record) !== played.key || !record.video_file) continue;
+      if (hidden.has(record.streamer_id) && !query.data.streamerId) continue;
       if (query.data.streamerId && record.streamer_id !== query.data.streamerId) continue;
       const sessionKey = recordSessionKey(record);
       const key = `${record.streamer_id}:${sessionKey}`;
@@ -220,6 +271,7 @@ router.get("/sessions", async (ctx) => {
     }
     for (const candidate of candidates) {
       cursor = candidate.cursor;
+      if (hidden.has(candidate.streamerId) && !query.data.streamerId) continue;
       const session = await build(candidate);
       if (status === "all" || session.watch.status === status) data.push(session);
       if (data.length === limit) break;
@@ -266,6 +318,7 @@ router.get("/library", async (ctx) => {
     return;
   }
   const { limit, status, search } = query.data;
+  const hidden = new Set(watchHistoryStore.hiddenStreamerIds());
   let cursor = query.data.before ?? Number.MAX_SAFE_INTEGER;
   const items: any[] = [];
   let exhausted = false;
@@ -285,6 +338,7 @@ router.get("/library", async (ctx) => {
     }
     for (const record of records) {
       cursor = record.id;
+      if (hidden.has(record.streamer_id)) continue;
       const watch = await recordWatchState(record);
       const state = watch?.completed ? "completed" : watch?.lastPlayedAt ? "watching" : "unwatched";
       if (status === "all" || status === state) items.push({ ...record, watch });
