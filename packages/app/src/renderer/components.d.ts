@@ -90,6 +90,7 @@ declare module 'vue' {
     WatchDayDialog: typeof import('./src/components/WatchDayDialog.vue')['default']
     WatchSessionCard: typeof import('./src/components/WatchSessionCard.vue')['default']
     WatchSessionEntry: typeof import('./src/components/WatchSessionEntry.vue')['default']
+    WatchStreamerAvatar: typeof import('./src/components/WatchStreamerAvatar.vue')['default']
     WatchStreamerGallery: typeof import('./src/components/WatchStreamerGallery.vue')['default']
     WatchToggleButton: typeof import('./src/components/WatchToggleButton.vue')['default']
   }

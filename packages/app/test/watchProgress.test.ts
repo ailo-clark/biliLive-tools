@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { createRenderer, ref } from "vue";
+import { createRenderer, nextTick, ref } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type Artplayer from "artplayer";
 const api = vi.hoisted(() => ({ resolve: vi.fn(), update: vi.fn(), keepalive: vi.fn() }));
@@ -289,5 +289,84 @@ describe("watch progress lifecycle", () => {
     expect(player.playing).toBe(false);
     app.unmount();
     expect(api.keepalive).not.toHaveBeenCalled();
+  });
+
+  it("rebinds progress on the same video without leaking the previous segment's position", async () => {
+    const { progress, player, source } = mount();
+    await progress.ready();
+    await progress.resume();
+    player.currentTime = 73;
+    await progress.persist();
+    api.resolve.mockResolvedValueOnce({ ...initial("record:two"), position: 210 });
+    source.value = { recordId: 2 };
+    await nextTick();
+    await progress.ready();
+    player.currentTime = 0;
+    await player.play();
+    expect(player.currentTime).toBe(210);
+    player.currentTime = 218;
+    player.pause();
+    await vi.waitFor(() => expect(progress.state.value?.position).toBe(218));
+    expect(api.update.mock.calls.at(-1)?.[0]).toBe("record:two");
+    expect(
+      api.update.mock.calls.find(([key, value]) => key === "record:one" && value.position === 73),
+    ).toBeTruthy();
+  });
+
+  it("ignores a previous segment's delayed metadata seek after reusing the video", async () => {
+    const { progress, player, source } = mount();
+    await progress.ready();
+    player.duration = NaN;
+    await progress.resume();
+    await progress.persist();
+    api.resolve.mockResolvedValueOnce({ ...initial("record:two"), position: 210 });
+    source.value = { recordId: 2 };
+    await nextTick();
+    await progress.ready();
+    player.duration = 1000;
+    player.currentTime = 0;
+    player.emit("video:loadedmetadata");
+    expect(player.currentTime).toBe(0);
+    await player.play();
+    expect(player.currentTime).toBe(210);
+  });
+
+  it("preserves the saved position if switching before resumed video metadata arrives", async () => {
+    const { progress, player } = mount();
+    await progress.ready();
+    player.duration = NaN;
+    await progress.resume();
+    expect(player.currentTime).toBe(0);
+    await progress.persist();
+    expect(progress.state.value?.position).toBe(52);
+    expect(api.update.mock.calls.at(-1)?.[1].position).toBe(52);
+  });
+
+  it("does not let a progress conflict disable continuous playback", async () => {
+    const ended = vi.fn();
+    const { progress, player } = mount(undefined, ended);
+    await progress.ready();
+    await progress.resume();
+    api.update.mockResolvedValueOnce({ conflict: true, state: { ...initial(), revision: 7 } });
+    player.pause();
+    await vi.waitFor(() => expect(progress.message.value).toContain("其他页面"));
+    player.emit("video:ended");
+    player.emit("video:ended");
+    await vi.waitFor(() => expect(ended).toHaveBeenCalledOnce());
+    expect(api.update).toHaveBeenCalledOnce();
+  });
+
+  it("advances once if a browser emits duplicate ended events while completion is saving", async () => {
+    const ended = vi.fn();
+    const { progress, player } = mount(undefined, ended);
+    await progress.ready();
+    await progress.resume();
+    player.currentTime = 1000;
+    player.emit("video:ended");
+    player.emit("video:ended");
+    await vi.waitFor(() => expect(ended).toHaveBeenCalledOnce());
+    expect(api.update.mock.calls.filter(([, value]) => value.action === "completed")).toHaveLength(
+      1,
+    );
   });
 });

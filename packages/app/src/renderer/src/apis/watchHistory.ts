@@ -169,6 +169,9 @@ export async function streamers(
 export async function setStreamerHidden(streamerId: number, hidden: boolean) {
   return (await request.put(`/watch-history/streamers/${streamerId}/visibility`, { hidden })).data;
 }
+export async function streamerAvatar(streamerId: number): Promise<string | null> {
+  return (await request.get(`/watch-history/streamers/${streamerId}/avatar`)).data.avatar;
+}
 export async function calendar(streamerId: number, month?: string) {
   return (await request.get(`/watch-history/calendar/${streamerId}`, { params: { month } }))
     .data as WatchCalendar;
@@ -213,6 +216,7 @@ export default {
   sessionClips,
   streamers,
   setStreamerHidden,
+  streamerAvatar,
   calendar,
   play,
 };

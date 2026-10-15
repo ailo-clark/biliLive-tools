@@ -22,6 +22,9 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
   let lastSave = 0;
   let queuedAction: WatchAction | null = null;
   let conflicted = false;
+  let endedGeneration = -1;
+  let resolving: Promise<void> = Promise.resolve();
+  let pendingPosition: number | null = null;
   const pendingKey = () =>
     `watch-pending:${request.defaults.baseURL || "local"}:${state.value?.key}`;
 
@@ -31,9 +34,11 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
     position:
       !active || resumeAvailable.value
         ? state.value!.position
-        : Number.isFinite(player?.currentTime)
-          ? Math.max(0, player!.currentTime)
-          : state.value!.position,
+        : pendingPosition !== null
+          ? pendingPosition
+          : Number.isFinite(player?.currentTime)
+            ? Math.max(0, player!.currentTime)
+            : state.value!.position,
     duration:
       Number.isFinite(player?.duration) && player!.duration > 0
         ? player!.duration
@@ -113,6 +118,9 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
     active = false;
     resumeAvailable.value = false;
     conflicted = false;
+    dirty = false;
+    queuedAction = null;
+    pendingPosition = null;
     if (!source.value?.recordId && !source.value?.videoId) return;
     try {
       let data = await watchApi.resolve(source.value);
@@ -173,12 +181,24 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
   function seekTo(position: number) {
     if (!player) return;
     const instance = player;
-    if (Number.isFinite(instance.duration) && instance.duration > 0) {
+    const current = generation;
+    if (
+      Number.isFinite(instance.duration) &&
+      instance.duration > 0 &&
+      instance.template?.$video?.readyState !== 0
+    ) {
+      pendingPosition = null;
       instance.currentTime = Math.min(position, instance.duration);
     } else {
+      pendingPosition = position;
       instance.once("video:loadedmetadata", () => {
-        if (!disposed && player === instance)
-          instance.currentTime = Math.min(position, instance.duration);
+        if (!disposed && player === instance && current === generation) {
+          instance.currentTime =
+            Number.isFinite(instance.duration) && instance.duration > 0
+              ? Math.min(position, instance.duration)
+              : position;
+          pendingPosition = null;
+        }
       });
     }
   }
@@ -186,6 +206,7 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
   function attach(instance: Artplayer) {
     player = instance;
     const begin = () => {
+      endedGeneration = -1;
       if (!state.value) return;
       // If the user plays without choosing, preserve their previous place by resuming.
       if (resumeAvailable.value) {
@@ -208,10 +229,11 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
     });
     instance.on("video:ended", () => {
       const current = generation;
-      if (conflicted) return;
+      if (endedGeneration === current) return;
+      endedGeneration = current;
       void (async () => {
-        if (active && state.value) await save("completed");
-        if (disposed || current !== generation || conflicted) return;
+        if (active && state.value && !conflicted) await save("completed");
+        if (disposed || current !== generation) return;
         active = false;
         onFinished?.();
       })();
@@ -242,13 +264,14 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
   document.addEventListener("visibilitychange", visibility);
   window.addEventListener("pagehide", flush);
   window.addEventListener("online", retry);
+  const reload = () => (resolving = load());
   watch(
     () =>
       source.value?.recordId
         ? `record:${source.value.recordId}`
         : `file:${source.value?.videoId || ""}`,
     () => {
-      void load();
+      void reload();
     },
     { immediate: true },
   );
@@ -261,5 +284,16 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
     window.removeEventListener("online", retry);
   });
 
-  return { state, message, resumeAvailable, attach, resume, restart, mark, persist };
+  return {
+    state,
+    message,
+    resumeAvailable,
+    attach,
+    resume,
+    restart,
+    mark,
+    persist,
+    reload,
+    ready: () => resolving,
+  };
 }

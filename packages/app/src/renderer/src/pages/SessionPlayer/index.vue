@@ -26,13 +26,12 @@
         <div class="session-video">
           <Artplayer
             v-if="source"
-            :key="source.sequence"
             ref="playerRef"
             :option="{
               url: source.url,
               type: source.type,
               fullscreen: true,
-              autoplay: source.autoplay,
+              autoplay: false,
             }"
             :plugins="['ass', 'danmuku']"
             :watch-source="{ recordId: source.recordId, videoId: source.videoId }"
@@ -136,9 +135,13 @@ const source = ref<{
   url: string;
   type: string;
   autoplay: boolean;
-  danma?: { type: string; content: any };
+  danmaId?: string;
 }>();
 const playerRef = ref<any>();
+let resolvePlayer!: (instance: ArtplayerType | null) => void;
+const playerReady = new Promise<ArtplayerType | null>((resolve) => {
+  resolvePlayer = resolve;
+});
 const loading = ref(false);
 const error = ref("");
 const message = ref("");
@@ -198,7 +201,7 @@ async function load() {
   } catch (e: any) {
     if (!disposed) error.value = String(e?.message || e || "获取场次失败");
   } finally {
-    if (!disposed) loading.value = false;
+    if (!disposed && sequence === 0) loading.value = false;
   }
 }
 async function select(clip: WatchClip, play = true) {
@@ -215,46 +218,61 @@ async function select(clip: WatchClip, play = true) {
     if (file.videoFileExt === "ts")
       throw new Error("TS 分段暂不支持浏览器直接播放，请选择其他分段或在电脑版转换");
     const url = await commonApi.getVideo(file.videoFileId);
-    let danma: { type: string; content: any } | undefined;
-    if (file.danmaFileId) {
-      try {
-        const parsed = await danmaApi.getParsedContentById(file.danmaFileId);
-        danma = { type: parsed.danmaType, content: parsed.content };
-      } catch {
-        if (current === sequence && !disposed) message.value = "弹幕暂不可用，视频仍可播放";
-      }
-    }
     if (current !== sequence || disposed) return;
-    source.value = {
+    const sameRecord = source.value?.recordId === clip.id;
+    const nextSource = {
       sequence: current,
       autoplay: play,
       recordId: clip.id,
       videoId: file.videoFileId,
       url,
       type: file.videoFileExt,
-      danma,
+      danmaId: file.danmaFileId || undefined,
     };
+    source.value = nextSource;
+    await nextTick();
+    const instance = playerRef.value?.video || (await playerReady);
+    if (!instance || current !== sequence || disposed) return;
+    playerRef.value.replaceMedia(url, file.videoFileExt);
+    await playerRef.value.switchAss("");
+    await playerRef.value.switchDanmuku([]);
+    if (sameRecord) await playerRef.value.reloadProgress();
+    else await playerRef.value.progressReady();
+    if (current !== sequence || disposed) return;
+    void loadDanma(nextSource);
+    if (play) {
+      try {
+        await instance.play();
+      } catch {
+        if (current === sequence && !disposed) {
+          message.value = "请点击播放器上的播放按钮继续";
+          instance.notice.show = message.value;
+        }
+      }
+    }
   } catch (e: any) {
     if (current === sequence && !disposed) {
       error.value = String(e?.message || e || "分段加载失败");
       failedClip.value = clip;
+      const instance = playerRef.value?.video;
+      if (instance) instance.notice.show = "分段加载失败，请退出全屏后重试或选择其他分段";
     }
   } finally {
     if (current === sequence && !disposed) loading.value = false;
   }
 }
-async function ready(instance: ArtplayerType) {
-  const current = source.value;
-  if (!current) return;
+function ready(instance: ArtplayerType) {
+  resolvePlayer(instance);
+}
+async function loadDanma(current: NonNullable<typeof source.value>) {
+  if (!current.danmaId) return;
   try {
-    if (current.danma?.type === "ass") await playerRef.value?.switchAss(current.danma.content);
-    else if (current.danma?.type === "xml")
-      await playerRef.value?.switchDanmuku(current.danma.content);
-    if (current.autoplay && source.value?.sequence === current.sequence && !disposed)
-      await instance.play();
+    const parsed = await danmaApi.getParsedContentById(current.danmaId);
+    if (disposed || sequence !== current.sequence) return;
+    if (parsed.danmaType === "ass") await playerRef.value?.switchAss(parsed.content);
+    else if (parsed.danmaType === "xml") await playerRef.value?.switchDanmuku(parsed.content);
   } catch {
-    if (!disposed && source.value?.sequence === current.sequence)
-      message.value = "请点击播放器上的播放按钮继续";
+    if (!disposed && sequence === current.sequence) message.value = "弹幕暂不可用，视频仍可播放";
   }
 }
 function updateWatch(state: WatchState | null) {
@@ -282,11 +300,10 @@ async function mark(clip: WatchClip) {
       error.value = "观看状态已在其他页面更新，请重试";
       return;
     }
-    // Refresh the current player's revision by remounting it, without autoplay.
+    // Refresh the revision without replacing the fullscreen video element.
     if (clip.id === source.value?.recordId) {
-      source.value = undefined;
-      await nextTick();
-      await select(clip, false);
+      await playerRef.value?.reloadProgress();
+      if (!result.state.completed && playerRef.value?.video) playerRef.value.video.currentTime = 0;
     }
     window.dispatchEvent(new Event("watch-history-updated"));
   } catch (e: any) {
@@ -301,6 +318,7 @@ onBeforeRouteLeave(async () => {
 });
 onBeforeUnmount(() => {
   disposed = true;
+  resolvePlayer(null);
   sequence++;
 });
 </script>

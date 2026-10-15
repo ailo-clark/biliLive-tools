@@ -84,6 +84,7 @@ const emits = defineEmits<{
 
 const artRef = ref<HTMLDivElement | null>(null);
 let instance: Artplayer | null = null;
+const video = shallowRef<Artplayer | null>(null);
 let destroyed = false;
 const {
   state: watchState,
@@ -94,6 +95,8 @@ const {
   restart,
   mark,
   persist,
+  reload: reloadProgress,
+  ready: progressReady,
 } = useWatchProgress(
   computed(() => props.watchSource),
   () => emits("finished"),
@@ -201,9 +204,9 @@ onMounted(async () => {
     // playbackRate: true,
     customType: {
       flv: (video, url, art) => {
+        if (destroyed) return;
         if (mpegts.isSupported()) {
-          // @ts-expect-error
-          if (art.flv) art.flv.destroy();
+          clearTransports(art);
 
           const flv = mpegts.createPlayer({
             type: "flv",
@@ -214,20 +217,18 @@ onMounted(async () => {
           flv.load();
 
           art.flv = flv;
-          art.on("destroy", () => flv.destroy());
         } else {
           art.notice.show = "Unsupported playback format: flv";
         }
       },
       m3u8: function playM3u8(video, url, art) {
+        if (destroyed) return;
         if (Hls.isSupported()) {
-          // @ts-expect-error
-          if (art.hls) art.hls.destroy();
+          clearTransports(art);
           const hls = new Hls();
           hls.loadSource(url);
           hls.attachMedia(video);
           art.hls = hls;
-          art.on("destroy", () => hls.destroy());
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = url;
         } else {
@@ -235,6 +236,7 @@ onMounted(async () => {
         }
       },
       ts: function play(video, url, art) {
+        if (destroyed) return;
         const duration = 5;
         const tsFile = url;
         const m3u8Content = `#EXTM3U
@@ -249,13 +251,11 @@ ${tsFile}
         const m3u8URL = URL.createObjectURL(blob);
 
         if (Hls.isSupported()) {
-          // @ts-expect-error
-          if (art.hls) art.hls.destroy();
+          clearTransports(art);
           const hls = new Hls();
           hls.loadSource(m3u8URL);
           hls.attachMedia(video);
           art.hls = hls;
-          art.on("destroy", () => hls.destroy());
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = url;
         } else {
@@ -263,6 +263,10 @@ ${tsFile}
         }
       },
     },
+  });
+  video.value = instance;
+  instance.on("destroy", () => {
+    if (instance) clearTransports(instance);
   });
   await nextTick();
 
@@ -280,6 +284,7 @@ ${tsFile}
   // console.log("Artplayer instance created:", instance);
 
   setTimeout(() => {
+    if (destroyed || !instance) return;
     // TODO:这里可能未来会出现问题，artplayerPluginSubtitle是异步插件
     // @ts-ignore
     instance.artplayerPluginSubtitle = instance?.plugins?.artplayerPluginSubtitle;
@@ -352,10 +357,29 @@ const setSubtitleContent = async (content: string) => {
   }
 };
 
-const video = computed(() => instance);
+// Keep the video element, fullscreen/PiP state and browser playback permission across episodes.
+function clearTransports(art: Artplayer) {
+  const media = art as Artplayer & { flv?: { destroy(): void }; hls?: { destroy(): void } };
+  media.flv?.destroy();
+  media.hls?.destroy();
+  media.flv = undefined;
+  media.hls = undefined;
+}
+function replaceMedia(url: string, type: string) {
+  if (!instance) throw new Error("播放器尚未就绪");
+  instance.pause();
+  if (instance.option.url === url && instance.type === type) return;
+  clearTransports(instance);
+  instance.template.$video.defaultPlaybackRate = instance.playbackRate;
+  instance.type = type;
+  instance.url = url;
+}
 
 defineExpose({
   persist,
+  replaceMedia,
+  progressReady,
+  reloadProgress,
   switchUrl,
   video,
   switchAss,
@@ -367,6 +391,7 @@ defineExpose({
 
 onBeforeUnmount(() => {
   destroyed = true;
+  video.value = null;
   if (instance && instance.destroy) {
     instance.destroy(false);
   }

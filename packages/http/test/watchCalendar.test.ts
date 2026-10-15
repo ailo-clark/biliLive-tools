@@ -10,7 +10,12 @@ import type { Server } from "node:http";
 const Database = createRequire(new URL("../../shared/package.json", import.meta.url))(
   "better-sqlite3",
 );
-const fixture = vi.hoisted(() => ({ db: null as any, store: null as any }));
+const fixture = vi.hoisted(() => ({
+  db: null as any,
+  store: null as any,
+  recorders: [] as any[],
+  providers: [] as any[],
+}));
 vi.mock("@biliLive-tools/shared/db/index.js", () => ({
   getMainDb: () => fixture.db,
   get watchHistoryStore() {
@@ -21,6 +26,9 @@ vi.mock("@biliLive-tools/shared/db/index.js", () => ({
   },
 }));
 vi.mock("../src/index.js", () => ({
+  container: {
+    resolve: () => ({ manager: { recorders: fixture.recorders, providers: fixture.providers } }),
+  },
   appConfig: {
     get: () => [
       {
@@ -277,6 +285,67 @@ describe("streamer calendar against independent watch data", () => {
     expect((await (await get("/streamers")).json()).total).toBe(2);
     expect((await (await get("/recent")).json()).some((s: any) => s.recordId === 5)).toBe(true);
     expect(fixture.store.get(key)).toEqual(saved);
+    expect(fixture.db.prepare("SELECT * FROM record_history ORDER BY id").all()).toEqual(
+      originalRecords,
+    );
+    expect(fixture.db.prepare("SELECT sql FROM sqlite_master ORDER BY name").all()).toEqual(
+      originalSchema,
+    );
+  });
+
+  it("fetches room avatars like the recorder page, caches concurrent requests and keeps archived/history data intact", async () => {
+    expect((await get("/streamers/10/avatar", false)).status).toBe(401);
+    expect((await get("/streamers/-1/avatar")).status).toBe(400);
+    expect((await get("/streamers/999/avatar")).status).toBe(404);
+    let complete!: (value: any) => void;
+    const lookup = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    fixture.recorders.push({
+      providerId: "Bilibili",
+      channelId: "10",
+      liveInfo: { avatar: "https://example.com/runtime.png" },
+      getLiveInfo: lookup,
+    });
+    expect((await (await get("/streamers")).json()).data[0].avatar).toBe(
+      "https://example.com/runtime.png",
+    );
+    const pending = Promise.all([get("/streamers/10/avatar"), get("/streamers/10/avatar")]);
+    await vi.waitFor(() => expect(lookup).toHaveBeenCalledOnce());
+    complete({ avatar: "https://example.com/fresh.png" });
+    for (const response of await pending)
+      expect(await response.json()).toEqual({ avatar: "https://example.com/fresh.png" });
+    fixture.store.close();
+    fixture.store = new WatchHistoryStore(directory);
+    expect((await (await get("/streamers/10/avatar")).json()).avatar).toBe(
+      "https://example.com/fresh.png",
+    );
+    expect(lookup).toHaveBeenCalledOnce();
+    lookup.mockRejectedValueOnce(new Error("room unavailable"));
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 21 * 60_000);
+    try {
+      expect((await (await get("/streamers/10/avatar")).json()).avatar).toBe(
+        "https://example.com/fresh.png",
+      );
+      await get("/streamers/10/avatar");
+      expect(lookup).toHaveBeenCalledTimes(2);
+    } finally {
+      clock.mockRestore();
+    }
+    const create = vi.fn(() => ({
+      getLiveInfo: async () => ({ avatar: "https://example.com/archive.png" }),
+    }));
+    fixture.providers.push({ id: "Bilibili", createRecorder: create });
+    expect((await (await get("/streamers/20/avatar")).json()).avatar).toBe(
+      "https://example.com/archive.png",
+    );
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: "20", disableAutoCheck: true }),
+    );
+    expect(fixture.recorders).toHaveLength(1);
     expect(fixture.db.prepare("SELECT * FROM record_history ORDER BY id").all()).toEqual(
       originalRecords,
     );

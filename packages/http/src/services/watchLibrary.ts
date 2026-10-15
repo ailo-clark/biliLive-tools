@@ -3,7 +3,7 @@ import {
   recordSessionKey,
   liveStartMilliseconds,
 } from "@biliLive-tools/shared/db/recordSession.js";
-import { appConfig } from "../index.js";
+import { streamerAvatarSnapshot } from "./watchAvatars.js";
 import { sessionRecords, sessionWatch } from "./watchHistory.js";
 import type { LiveHistory } from "@biliLive-tools/shared/db/model/recordHistory.js";
 import type { Streamer } from "@biliLive-tools/shared/db/model/streamer.js";
@@ -30,19 +30,12 @@ export function libraryStreamer(id: number) {
     | Streamer
     | undefined;
   if (!row) return null;
-  const recorder = appConfig
-    ?.get("recorders")
-    ?.find(
-      (item) =>
-        item.channelId === row.room_id &&
-        item.providerId.toLowerCase() === row.platform.toLowerCase(),
-    );
   return {
     id: row.id,
     name: row.name,
     roomId: row.room_id,
     platform: row.platform,
-    avatar: recorder?.extra?.avatar || null,
+    avatar: streamerAvatarSnapshot({ id: row.id, roomId: row.room_id, platform: row.platform }),
   };
 }
 

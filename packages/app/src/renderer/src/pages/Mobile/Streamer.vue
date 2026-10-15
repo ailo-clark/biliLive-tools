@@ -1,9 +1,7 @@
 <template>
   <div class="streamer-calendar-page">
     <div v-if="data" class="profile">
-      <n-avatar round :size="64" :src="data.streamer.avatar || undefined">{{
-        data.streamer.name.slice(0, 1)
-      }}</n-avatar>
+      <WatchStreamerAvatar :streamer="data.streamer" :size="64" />
       <div>
         <h1>{{ data.streamer.name }}</h1>
         <p>{{ data.streamer.platform }} · {{ data.streamer.roomId }}</p>
@@ -125,6 +123,7 @@ import {
 import { useRoute } from "vue-router";
 import watchApi, { type WatchCalendar, type WatchSession } from "@renderer/apis/watchHistory";
 import WatchDayDialog from "@renderer/components/WatchDayDialog.vue";
+import WatchStreamerAvatar from "@renderer/components/WatchStreamerAvatar.vue";
 import WatchSessionEntry from "@renderer/components/WatchSessionEntry.vue";
 import { monthCells, shiftMonth } from "@renderer/utils/watchCalendar";
 import { playSession } from "@renderer/utils/pages";

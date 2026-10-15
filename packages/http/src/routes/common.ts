@@ -11,6 +11,7 @@ import { genTimeData } from "@biliLive-tools/shared/danmu/hotProgress.js";
 import { parseDanmu } from "@biliLive-tools/shared/danmu/index.js";
 import { statisticsService, recordHistoryService } from "@biliLive-tools/shared/db/index.js";
 import recorderService from "../services/recorder.js";
+import { streamVideo } from "../services/videoStream.js";
 
 import { config, handler, appConfig, fileCache } from "../index.js";
 import { container } from "../index.js";
@@ -344,37 +345,7 @@ router.get("/video/:videoId", async (ctx) => {
   }
 
   const stat = await fs.stat(videoPath);
-  const fileSize = stat.size;
-  const range = ctx.headers.range;
-
-  if (range) {
-    const parts = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    const chunksize = end - start + 1;
-    const file = fs.createReadStream(videoPath, { start, end });
-    const head = {
-      "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-      "Accept-Ranges": "bytes",
-      "Content-Length": chunksize,
-      "Content-Type": contentType,
-    };
-    ctx.res.writeHead(206, head);
-    ctx.body = file;
-  } else {
-    const MAX_CHUNK_SIZE = 1024 * 1024 * 1; // 1MB
-    const head = {
-      "Content-Length": MAX_CHUNK_SIZE,
-      "Content-Type": contentType,
-      "Content-Range": `bytes 0-${Math.min(MAX_CHUNK_SIZE - 1, fileSize - 1)}/${fileSize}`,
-      "Accept-Ranges": "bytes",
-    };
-    ctx.res.writeHead(206, head);
-    const start = 0;
-    const end = Math.min(MAX_CHUNK_SIZE - 1, fileSize - 1);
-    const file = fs.createReadStream(videoPath, { start, end });
-    ctx.body = file;
-  }
+  streamVideo(ctx, videoPath, stat.size, contentType);
 });
 
 router.post("/parseDanmu", async (ctx) => {

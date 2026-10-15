@@ -70,8 +70,7 @@ const router = createRouter({
         {
           path: "/watchHistory",
           name: "WatchHistory",
-          component: () => import("../pages/WatchHistory/index.vue"),
-          meta: { title: "观看历史" },
+          redirect: { name: "MobileHome" },
         },
         {
           path: "/home",

@@ -218,10 +218,6 @@ const footerMenuOptions = computed<MenuOption[]>(() => {
     key: string;
     icon?: () => VNode;
   }[] = [];
-  menus.push({
-    label: () => h(RouterLink, { to: "/watchHistory" }, { default: () => "观看历史" }),
-    key: "WatchHistory",
-  });
   if (isWeb.value) {
     menus.push({
       label: () =>

@@ -49,13 +49,7 @@
             :aria-label="`查看 ${streamer.name} 的录播日历`"
             @click="calendar(streamer.id)"
           >
-            <n-avatar
-              round
-              :size="56"
-              :src="streamer.avatar || undefined"
-              referrerpolicy="no-referrer"
-              >{{ streamer.name.slice(0, 1) }}</n-avatar
-            >
+            <WatchStreamerAvatar :streamer="streamer" />
             <span class="streamer-info"
               ><strong>{{ streamer.name }}</strong
               ><span>{{ streamer.platform }} · {{ streamer.roomId }}</span></span
@@ -102,6 +96,7 @@ import {
 import { useRouter } from "vue-router";
 import watchApi, { type WatchStreamer, type WatchSession } from "@renderer/apis/watchHistory";
 import { playSession } from "@renderer/utils/pages";
+import WatchStreamerAvatar from "./WatchStreamerAvatar.vue";
 const router = useRouter();
 const items = ref<WatchStreamer[]>([]);
 const search = ref("");

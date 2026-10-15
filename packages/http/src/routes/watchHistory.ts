@@ -19,6 +19,7 @@ import {
   summarizeSessionWatch,
 } from "@biliLive-tools/shared/db/recordSession.js";
 import { recordWatchKey } from "@biliLive-tools/shared/db/watchHistory.js";
+import { refreshStreamerAvatar } from "../services/watchAvatars.js";
 import type { LiveHistory } from "@biliLive-tools/shared/db/model/recordHistory.js";
 import {
   streamerLibrary,
@@ -56,6 +57,25 @@ router.get("/streamers", (ctx) => {
     query.data.limit,
     query.data.includeHidden === "true",
   );
+});
+
+router.get("/streamers/:streamerId/avatar", async (ctx) => {
+  const id = z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(Number.MAX_SAFE_INTEGER)
+    .safeParse(ctx.params.streamerId);
+  if (!id.success) {
+    ctx.throw(400, "无效的主播标识");
+    return;
+  }
+  const profile = libraryStreamer(id.data);
+  if (!profile) {
+    ctx.throw(404, "主播不存在");
+    return;
+  }
+  ctx.body = { avatar: await refreshStreamerAvatar(profile) };
 });
 
 router.put("/streamers/:streamerId/visibility", (ctx) => {
