@@ -1,0 +1,2 @@
+ef99a1004a526578457aff682f5f752946a4d2dd4a92122fc9046fe3a5fea059  bililivewatch-proxy-plugin-0.2.0.zip
+ecbb21e57c5a93a37982ce9653d80ffba3fd5eacd54de7547f1426b2bd08c365  bililivewatch-proxy-plugin-0.2.0.tar.gz
