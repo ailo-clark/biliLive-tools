@@ -1,25 +1,29 @@
 # 小米 NAS 插件下载
 
-推荐版本：**0.2.1，兼容不含 http_sub_module 的 NAS Nginx**。本分支仅存放安装压缩包与文档，应用主分支未改动，不提交解压后的插件源码。
+推荐版本：**0.2.2，修复 NAS 配置路径映射导致的重复写入误报**。本分支仅存放安装压缩包与文档，应用主分支未改动，不提交解压后的插件源码。
 
-- [直接下载 0.2.1 ZIP 安装包](https://github.com/ailo-clark/biliLive-tools/raw/refs/heads/nas-plugin-downloads/bililivewatch-proxy-plugin-0.2.1.zip)
-- [部署与回滚手册](bililivewatch-proxy-0.2.1-manual.md)
-- [下载离线 HTML 手册](https://github.com/ailo-clark/biliLive-tools/raw/refs/heads/nas-plugin-downloads/bililivewatch-proxy-0.2.1-manual.html)
-- [测试报告](bililivewatch-proxy-0.2.1-test-report.md)
-- [SHA-256 校验文件](bililivewatch-proxy-0.2.1-SHA256SUMS.txt)
+- [直接下载 0.2.2 ZIP 安装包](https://github.com/ailo-clark/biliLive-tools/raw/refs/heads/nas-plugin-downloads/bililivewatch-proxy-plugin-0.2.2.zip)
+- [部署与回滚手册](bililivewatch-proxy-0.2.2-manual.md)
+- [下载离线 HTML 手册](https://github.com/ailo-clark/biliLive-tools/raw/refs/heads/nas-plugin-downloads/bililivewatch-proxy-0.2.2-manual.html)
+- [测试报告](bililivewatch-proxy-0.2.2-test-report.md)
+- [SHA-256 校验文件](bililivewatch-proxy-0.2.2-SHA256SUMS.txt)
 
-## 0.2.1 修复
+## 0.2.2 修复
 
-旧 0.2.0 依赖 Nginx 可选模块，部分 NAS 会报告“缺少 http_sub_module；未修改配置”。0.2.1 改由 NAS 已有 plugin.cgi 的 Python 入口实时适配 Docker HTML/JS，视频、API 和 CSS 等仍由 Nginx 直接转发。无需安装该模块、更换系统 Nginx、修改录播容器或新增常驻服务。
+旧版可能报告“共享配置在部署过程中发生变化，已停止：/data/etc/upper/config/plugin”。NAS 的 `/etc/config/plugin` 与 `/data/etc/upper/config/plugin` 可能是同一份配置的两个入口：脚本写入前者后，后者随之变化，被旧脚本误判为外部修改。
 
-如果旧版仅在检查阶段报错且提示未修改配置，直接解压本版检查和部署，无需回滚。若旧版已成功安装，先运行原回滚脚本，再部署本版。完整步骤见手册。
+新版通过真实路径和 Linux overlay 挂载信息识别这种映射，只通过合并视图写入一次，并在回滚及开机恢复时沿用这一处理。真正独立的文件仍各自管理，真实外部改动仍会阻止覆盖。插件登记的业务字段是 `ports.bililivewatch.u<UID>`，默认端口 3000，不涉及录像数据或观看进度。
 
-最终压缩包解压后通过 41 项测试，并在未编译 sub 模块的真实 Nginx、CLI 后端和 Chromium 中通过登录、日历、播放、进度恢复、全屏连播和视频 Range 验证。尚未连接真实小米 NAS，官方 App 与手机移动网络访问仍需在设备上验收。
+先执行 `sh /data/bililive-nas-plugin/runtime/status.sh`。若状态为 `rolled_back`，表示失败后已自动回滚，直接解压本版检查和部署；其他状态先按手册回滚，不删除状态或备份来强行重装。
+
+本版继续兼容不含 `http_sub_module` 的 Nginx，实时使用 Docker 原网页，不新增容器、常驻网页服务或数据库。
+
+最终压缩包通过 51 项测试和真实 Nginx、CLI 后端、Chromium 的播放验证。配置联动用临时目录别名复现，overlay 规则使用合成 mountinfo 验证；未连接真实 NAS 检查挂载表，官方 App 与移动网络仍需设备验收。
 
 ZIP SHA-256：
 
 ```text
-5a926fef2df975c620fd68efb6c039c23cad8f08f158fa6122a401861b5f737d
+dc03f5cb6a95f56cf403859bc49469daa4331b0613b4a13f99f2486e3cb9f4fc
 ```
 
-旧 0.2.0 文件保留作历史归档，请优先使用 0.2.1。
+旧 0.2.0、0.2.1 文件保留作历史归档，请优先使用 0.2.2。
