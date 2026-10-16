@@ -1,0 +1,215 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>录播观看插件：部署与回滚手册</title><style>
+:root{color-scheme:light dark}body{margin:0;font:16px/1.8 system-ui,-apple-system,"Microsoft YaHei",sans-serif;background:#f5f7fa;color:#182230}article{max-width:960px;margin:32px auto;padding:32px 36px;background:white;border-radius:16px;box-shadow:0 4px 30px #1020300a}h1{font-size:28px;line-height:1.5}h2{font-size:22px;margin-top:36px;border-bottom:1px solid #e2e8f0;padding-bottom:8px}a{color:#096d52}pre{overflow:auto;background:#111827;color:#e5edf5;padding:18px;border-radius:10px;font-size:14px;line-height:1.6}code{font-family:ui-monospace,Consolas,monospace;overflow-wrap:anywhere}p>code,li>code,td>code{background:#edf2f7;border-radius:4px;padding:2px 5px}table{border-collapse:collapse;display:block;overflow-x:auto;margin:20px 0}th,td{border:1px solid #d7e0e9;padding:10px 12px;text-align:left}th{background:#f1f5f9}@media(max-width:640px){article{margin:0;border-radius:0;padding:16px}h1{font-size:24px}pre{padding:12px}body{font-size:15px}}@media(prefers-color-scheme:dark){body{background:#11151b;color:#e2e8f0}article{background:#1b212b}h2{border-color:#3b4554}th,td{border-color:#435066}th,p>code,li>code,td>code{background:#293344}a{color:#73dfbb}}@media print{article{margin:0;padding:0;box-shadow:none}pre{white-space:pre-wrap}table{display:table}h2{break-after:avoid}}
+</style></head><body><article><h1>小米 NAS Docker 网页代理插件：部署与回滚</h1>
+<p>版本 0.2.3。日期：2026-10-16（香港时间）。</p>
+<h2>1. 本版如何工作</h2>
+<p>本版统一使用现有 Docker 网页，不再维护第二份观看前端。主页、主播卡片、日历、播放器、分集、弹幕和主题设置都来自你当前部署的容器。</p>
+<table>
+<thead>
+<tr>
+<th>App 中的业务请求</th>
+<th>NAS 读取的 Docker 地址</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>/plugin/&lt;UID&gt;/bililivewatch/web/index.html</code></td>
+<td><code>http://127.0.0.1:3000/index.html</code></td>
+</tr>
+<tr>
+<td><code>/plugin/&lt;UID&gt;/bililivewatch/web/assets/xxx.js</code></td>
+<td><code>http://127.0.0.1:3000/assets/xxx.js</code></td>
+</tr>
+<tr>
+<td><code>/plugin/&lt;UID&gt;/bililivewatch/api/watch-history/streamers</code></td>
+<td><code>http://127.0.0.1:3000/api/watch-history/streamers</code></td>
+</tr>
+<tr>
+<td><code>/plugin/&lt;UID&gt;/bililivewatch/api/common/video/&lt;视频ID&gt;</code></td>
+<td><code>http://127.0.0.1:3000/api/common/video/&lt;视频ID&gt;</code></td>
+</tr>
+</tbody></table>
+<p><code>127.0.0.1</code> 是 NAS 自身，不是手机。手机始终请求 NAS 插件地址，由 NAS 连接本机映射出的 Docker 3000 端口。这里是反向代理，不是把手机跳转到局域网 IP。</p>
+<p>HTML/JS 请求通过 NAS 已有的 <code>plugin.cgi</code> 鉴权后，由插件 Python 入口读取并适配；API、视频和 CSS 等仍由 Nginx 直接转发。无需 <code>http_sub_module</code>，不替换系统 Nginx，不新增常驻进程或监听端口。</p>
+<p>业务网页运行在一个很小的插件入口壳的 iframe 内。包内的 <code>index.html</code>、<code>shell.js</code> 仅负责这个窗口；不包含观看首页和播放器副本。</p>
+<p>原 Docker 网页的默认 API 地址是根路径 <code>/api</code>。如果仅剥掉入站请求的插件前缀，网页仍可能请求 NAS 根目录 <code>/api/...</code>，这些请求没有插件前缀，无法被对应插件代理识别。因此插件的 Python CGI 会在返回的 JS 中把完整字符串 <code>&quot;/api&quot;</code> 替换成 <code>&quot;/plugin/&lt;UID&gt;/bililivewatch/api&quot;</code>。其他业务代码继续使用容器的原文件。</p>
+<p>插件 CGI 在返回的原 HTML 中注入 <code>bridge.js</code>，隔离本插件的浏览器存储，避免原网页常用的 <code>api</code>、<code>key</code>、<code>theme</code> 等字段覆盖 NAS 宿主页面。首次登录仍是 Docker 原有的登录页，使用原 <code>BILILIVE_TOOLS_PASSKEY</code>。</p>
+<p>手机全屏适配通过另一个小脚本 <code>fullscreen.js</code> 注入：横向视频点击原播放器全屏按钮后优先请求系统横屏。方向锁定被 App 拒绝时，自动将原播放器、弹幕与控制栏一起旋转；原生全屏 API 不可用时使用页面全屏。点击角落的退出图标或原全屏按钮可恢复，退出时解除本次成功获得的方向锁定。竖向录像不强制横屏，电脑不启用此适配。</p>
+<p>全屏模式复用原 video 元素，保持分段连播。旋转后的进度条支持点击和拖动。整个 NAS App、系统状态栏能否随之旋转由 App 的原生设置决定，插件不能修改 Android Activity 的方向策略。无需更换 Docker 镜像。</p>
+<p>默认进入现有观看页 <code>#/mobile</code>。原网页的电脑版、侧边栏、设置等功能保持原有行为；本版不另做仅观看权限，登录后具有原网页对应的权限。</p>
+<h2>2. 部署条件</h2>
+<ul>
+<li>已有正常运行的 fullstack 容器，NAS 本机可访问它映射出的 3000 端口。你原来的 <code>3000:3000</code> 映射可以继续使用。</li>
+<li>容器已有非空 <code>BILILIVE_TOOLS_PASSKEY</code>。脚本不读取或改变 Docker 环境变量。</li>
+<li>NAS 已开启 root SSH，具备 <code>/usr/bin/python3</code>（3.10+）、Nginx 和 systemd。</li>
+<li>知道 NAS App 当前用户的数字 UID，不带 <code>u</code> 前缀。</li>
+<li>NAS 具备原生 <code>plugin.cgi</code> 插件入口及此方案使用的 <code>need_reject</code> 认证变量、<code>plugincenter.conf</code> 和 <code>/etc/config/plugin</code>。Nginx 无需编译 <code>http_sub_module</code>。</li>
+</ul>
+<p>可以在 NAS SSH 中查看：</p>
+<pre><code class="language-sh">ls -1 /data/plugin/u*.list
+nginx -t
+</code></pre>
+<p>例如 <code>u123456789.list</code> 对应 UID <code>123456789</code>。多用户 NAS 需要选 App 当前登录的用户。<code>nginx -t</code> 应确认当前配置有效。</p>
+<p>如果固件布局不同或缺少必要环境，检查脚本会停止，不会替换 NAS 的 Nginx、开启 SSH 或改变系统密码。</p>
+<p>本地验证基线是 <code>ghcr.io/ailo-clark/bililive-tools:watch-calendar-20261015</code> 对应的原 Docker 网页。无需更换该镜像。后续 Docker 更新网页后，刷新或重新打开插件即可；如果将来改变 API 基地址、资源目录或嵌入策略，需要重新确认代理适配。</p>
+<h2>3. 从旧版重新部署</h2>
+<p>如果此前运行 0.2.0 时只提示“缺少 http_sub_module；未修改配置”，说明尚未安装成功，直接使用本版检查与部署，无需回滚，也不要修改系统 Nginx。</p>
+<p>如果 0.2.1 曾提示“共享配置在部署过程中发生变化”，先执行 <code>sh /data/bililive-nas-plugin/runtime/status.sh</code>。<code>status</code> 为 <code>rolled_back</code> 表示已自动恢复，直接使用本版检查和部署；不是该状态时，先完成下方回滚。不要删除状态记录或备份后强行覆盖。</p>
+<p>如果已经成功安装了旧版，在 NAS 的 root SSH 中先执行：</p>
+<pre><code class="language-sh">sh /data/bililive-nas-plugin/runtime/rollback.sh
+</code></pre>
+<p>原版已成功安装（包括 0.2.2）时必须先回滚再部署，不直接覆盖。回滚完成后解压新版并运行检查、部署；最后完全退出并重新打开 NAS App，确保重新加载 0.2.3 的适配脚本。旧版回滚会保留原录像、观看进度、Docker 和 Compose。没有成功安装过旧版的用户直接进行下一步。</p>
+<p>新旧版使用相同插件 ID，不能同时安装。检查脚本发现旧部署仍存在时会拒绝覆盖，避免丢掉最初备份。</p>
+<h2>4. 上传、解压和检查</h2>
+<p>下载 <code>bililivewatch-proxy-plugin-0.2.3.zip</code> 和对应 SHA256 校验文件。Linux/macOS 可用 <code>sha256sum</code>；Windows PowerShell 可以运行：</p>
+<pre><code class="language-powershell">Get-FileHash .\bililivewatch-proxy-plugin-0.2.3.zip -Algorithm SHA256
+</code></pre>
+<p>上传至 NAS（替换地址）：</p>
+<pre><code class="language-sh">scp bililivewatch-proxy-plugin-0.2.3.zip root@你的NAS地址:/tmp/
+ssh root@你的NAS地址
+</code></pre>
+<p>NAS 没有 SFTP 子系统时，可在电脑用 <code>scp -O</code> 重试。</p>
+<p>NAS root 终端中执行：</p>
+<pre><code class="language-sh">python3 -m zipfile -e /tmp/bililivewatch-proxy-plugin-0.2.3.zip /tmp/
+cd /tmp/bililivewatch-proxy-plugin-0.2.3
+sh deploy/check.sh --uid 123456789
+</code></pre>
+<p>把 <code>123456789</code> 换成你的数字 UID。检查包含包校验、路径冲突、用户、现有 Nginx 配置、原 Docker HTML 和登录接口。检查不修改 NAS 插件配置，只使用临时部署锁。</p>
+<p>如果容器映射到其他端口：</p>
+<pre><code class="language-sh">sh deploy/check.sh --uid 123456789 --upstream http://127.0.0.1:实际端口
+</code></pre>
+<p>填写 fullstack 的主机映射端口，不是容器内部的 18010。只接受 <code>http://127.0.0.1:数字端口</code>。</p>
+<h2>5. 部署和登录</h2>
+<p>检查通过后：</p>
+<pre><code class="language-sh">sh deploy/deploy.sh --uid 123456789
+</code></pre>
+<p>自定义端口时，在部署命令中同样提供 <code>--upstream</code>。脚本会先备份配置，再注册插件、写入代理并执行 <code>nginx -t</code>；校验成功后重载。后续安装步骤出错也会尝试自动撤回。</p>
+<p>记录成功输出中的备份目录，例如：</p>
+<pre><code class="language-text">/data/bililive-nas-plugin/backups/本次备份ID/
+</code></pre>
+<p>完全退出 NAS App/米家 App 后重新进入，打开「录播观看」。会看到 Docker 自带的登录页，输入原容器密钥即可。原网页若显示更新日志，按原有提示关闭。</p>
+<p>本包不是小米签名的 <code>.mpk</code>，不要改扩展名后通过官方应用市场安装。</p>
+<h2>6. 配置变更和恢复边界</h2>
+<p>脚本不执行 Docker 命令，不修改 Compose、镜像、端口映射、录像目录或数据库结构。不新增 Python HTTP 常驻服务。</p>
+<p>只修改以下共享配置中的本插件内容：</p>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>变更</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>/data/plugin/u&lt;UID&gt;.list</code></td>
+<td>增加 <code>bililivewatch</code> 条目</td>
+</tr>
+<tr>
+<td><code>/etc/config/plugin</code></td>
+<td>增加插件端口登记</td>
+</tr>
+<tr>
+<td><code>/data/etc/upper/config/plugin</code></td>
+<td>仅当它是独立文件时同步登记；与 <code>/etc/config/plugin</code> 共用底层配置时不重复写入</td>
+</tr>
+<tr>
+<td><code>/etc/nginx/conf.d/luci/plugincenter.conf</code></td>
+<td>增加带 BEGIN/END 标记的代理块</td>
+</tr>
+</tbody></table>
+<p>新建：</p>
+<ul>
+<li><code>/home/u&lt;UID&gt;/plugin/bililivewatch/</code>：入口壳、适配脚本、图标及插件元信息，另含 UI 目录之外的 <code>src/proxy.json</code>（仅保存 UID 和本机端口）。</li>
+<li><code>/data/plugin/www/u&lt;UID&gt;/bililivewatch</code>：UI 软链接。</li>
+<li><code>/data/plugin/www/icon/bililivewatch.icon</code>：图标。</li>
+<li><code>/etc/systemd/system/bililivewatch-restore.service</code>：重启恢复服务。</li>
+<li><code>/data/bililive-nas-plugin/</code>：部署记录、独立回滚代码、原配置备份和入口壳恢复副本。</li>
+</ul>
+<p>恢复副本不包含 Docker 网页，Docker 网页始终从 3000 端口实时取得。</p>
+<p>部署前会只读识别目录别名和 Linux overlay 映射。两个路径对应同一配置时只写 <code>/etc/config/plugin</code>，避免脚本自己的写入被误判为外部修改；检查输出及新版状态记录会显示检测到的映射。内容相同但实际独立的文件不会被合并。</p>
+<p>原始配置备份包含字节、权限和属主。无其他改动时回滚会恢复原始字节；若后来增加其他插件或设置，只移除本插件条目，保留其他变化。若本插件自己的配置被手工改动，回滚会先报告冲突，避免覆盖修改。</p>
+<p>Nginx 不接管 NAS 根路径 <code>/api</code>，其他 NAS 服务的接口不受本插件路由影响。视频保持流式传输及 Range/206；API、SSE 和 WebSocket 经过同一个现有 Docker 服务。</p>
+<h2>7. 出问题时回滚</h2>
+<p>NAS 的 root SSH 中运行：</p>
+<pre><code class="language-sh">sh /data/bililive-nas-plugin/runtime/rollback.sh
+</code></pre>
+<p>此命令不依赖 <code>/tmp</code> 安装包仍然存在。也可使用下载包里的 <code>deploy/rollback.sh</code>。</p>
+<p>回滚后完全退出 App 重进，检查：</p>
+<p>如果想撤回 0.2.3 并回到此前可用的 0.2.2：先回滚 0.2.3，再解压保留的 0.2.2 原始安装包，沿用原 UID 和 upstream 运行该包的检查、部署命令。旧压缩包在 GitHub 下载分支中保留；这不会撤销录像或已保存的观看进度。</p>
+<pre><code class="language-sh">sh /data/bililive-nas-plugin/runtime/status.sh
+nginx -t
+</code></pre>
+<p>状态应为 <code>rolled_back</code>。重复回滚安全，恢复服务不会在下次开机重新创建插件。原 Docker 继续按原样使用；观看期间保存的进度不会被撤销。</p>
+<p>如果安装被断电或强制终止，恢复 SSH 后先运行回滚，不能直接覆盖重装。遇到 <code>installing</code>、<code>rolling_back</code> 或 <code>recovery_needed</code>，同样先回滚。</p>
+<p>如果报告配置冲突，备份仍在。不要直接拿整份旧 <code>.list</code> 覆盖当前文件，以免丢掉后来添加的其他插件。检查本插件注册项或 BEGIN/END 之间的代理块，修正冲突后重试。</p>
+<pre><code class="language-sh">ls -la /data/bililive-nas-plugin/backups/
+</code></pre>
+<p>每次备份中保留 <code>etc/...</code>、<code>data/...</code> 原始配置及同步更新的 <code>deployment.json</code>。这些文件可能含 NAS 私有配置，不要公开上传。</p>
+<p>如果只是主部署记录 <code>state.json</code> 损坏，可确认<strong>当前这次安装</strong>的备份 ID、UID 和记录状态后，先保留损坏文件，再恢复记录并回滚：</p>
+<pre><code class="language-sh">cp -p /data/bililive-nas-plugin/state.json /data/bililive-nas-plugin/state.json.damaged
+cp /data/bililive-nas-plugin/backups/本次备份ID/deployment.json /data/bililive-nas-plugin/state.json
+chmod 600 /data/bililive-nas-plugin/state.json
+sh /data/bililive-nas-plugin/runtime/rollback.sh
+</code></pre>
+<p>不要使用另一轮安装或之前已经回滚的备份记录。恢复能力依赖 NAS 存储、SSH、Python 和系统服务仍能工作。</p>
+<p>回滚有意保留备份、状态及恢复资料，也不会远程清除 App 的浏览器缓存。需要清除登录时使用原 Docker 网页的「登出」功能。</p>
+<h2>8. NAS 重启与 Docker 更新</h2>
+<p>NAS 重建插件目录或列表时，恢复服务会尝试从 <code>/data</code> 恢复入口壳、图标、注册项和代理块，不启动、停止或重建录播容器。</p>
+<pre><code class="language-sh">systemctl status bililivewatch-restore.service
+journalctl -u bililivewatch-restore.service -n 50 --no-pager
+python3 /data/bililive-nas-plugin/runtime/manage.py restore
+</code></pre>
+<p><code>restore</code> 只对 <code>installed</code> 状态生效。固件升级可能改变插件机制或删除服务单元，升级后需重新验收，不能承诺所有固件都自动恢复。</p>
+<p>更新 Docker 网页后关闭并重开插件即可，不需要重新构建前端或安装新插件。将来若镜像改变 <code>/api</code> 基地址或网页结构，应重新检查适配。</p>
+<p>重装插件时仍采用“先回滚，再检查和部署”，每轮保留独立备份。不要用 App 官方卸载按钮代替 SSH 回滚。</p>
+<h2>9. 真机与外网验证</h2>
+<p>先在家中 Wi-Fi 下检查原登录页、主播卡片、日历、视频拖动、全屏连播、进度保存和原网页设置。Android 手机选择横向 MP4，点击全屏，检查视频与按钮是否一起横向显示，点击和拖动进度条是否正常，再检查退出恢复和自动连播。</p>
+<p>再关闭手机 Wi-Fi，使用移动网络验证。优先使用 H.264/AAC 的 MP4。页面、接口、视频虽都经过 NAS 插件路径，官方 App 的 iframe、远程通道和长连接行为仍需真机确认。不要把本地浏览器测试通过当成外网播放已通过。</p>
+<p>本方案不生成公开网址，也不要求修改路由器或把 3000 端口暴露到公网。视频码率、家庭上传带宽和 App 远程连接速度共同影响播放流畅程度。FLV/HEVC 是否能播取决于手机 WebView，插件没有新增转码服务。</p>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>检查</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>旧版提示缺少 <code>http_sub_module</code></td>
+<td>改用 0.2.2，旧检查未修改配置时无需回滚；不需要安装模块或替换系统 Nginx</td>
+</tr>
+<tr>
+<td>旧版提示共享配置发生变化，路径为 <code>/data/etc/upper/config/plugin</code></td>
+<td>可能是 overlay 双路径联动导致的误报，0.2.2 已适配。先查状态；<code>rolled_back</code> 时直接换新版检查和部署，否则先回滚。真实外部改动仍需检查，不应跳过冲突保护</td>
+</tr>
+<tr>
+<td>已有部署记录/目标占用</td>
+<td>先确认旧版状态并回滚，不要删备份后直接覆盖</td>
+</tr>
+<tr>
+<td>图标不出现</td>
+<td>核对 UID，完全退出 App 后重进</td>
+</tr>
+<tr>
+<td>页面白屏</td>
+<td>检查 CGI、iframe 和 Nginx 代理；可能是 App/固件兼容问题</td>
+</tr>
+<tr>
+<td>能看页面但接口失败</td>
+<td>检查 CGI 的 JS 路径适配、NAS 登录态及 fullstack 端口</td>
+</tr>
+<tr>
+<td>手机全屏仍竖屏</td>
+<td>确认已安装 0.2.3 并彻底退出、重开 App；横向录像应在方向锁定受限时启用播放器区域旋转。NAS 原生标题栏和系统状态栏是否旋转由 App 控制</td>
+</tr>
+<tr>
+<td>HTML/JS 返回 502</td>
+<td>检查本机 Docker 端口与 <code>src/proxy.json</code>，确认网页仍为原 fullstack 格式；不手工绕过错误检查</td>
+</tr>
+<tr>
+<td>密钥错误</td>
+<td>用 <code>BILILIVE_TOOLS_PASSKEY</code>，不要用小米密码或 BILIKEY</td>
+</tr>
+<tr>
+<td>局域网正常，外网不能播</td>
+<td>需排查 App 远程视频通道，不能靠简单跳转局域网地址解决</td>
+</tr>
+</tbody></table>
+</article></body></html>
