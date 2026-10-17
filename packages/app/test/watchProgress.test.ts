@@ -72,7 +72,7 @@ describe("watch progress lifecycle", () => {
     vi.stubGlobal("window", windowTarget);
     vi.stubGlobal("document", documentTarget);
     api.resolve.mockResolvedValue(initial());
-    api.update.mockImplementation(async (key, update) => ({
+    const commit = async (key: string, update: any) => ({
       conflict: false,
       state: {
         ...initial(key),
@@ -81,8 +81,9 @@ describe("watch progress lifecycle", () => {
         completed: update.action === "completed",
         revision: update.revision + 1,
       },
-    }));
-    api.keepalive.mockResolvedValue({ ok: true });
+    });
+    api.update.mockImplementation(commit);
+    api.keepalive.mockImplementation(commit);
   });
   afterEach(() => {
     app?.unmount();
@@ -201,6 +202,187 @@ describe("watch progress lifecycle", () => {
     windowTarget.dispatchEvent(new Event("online"));
     expect(api.keepalive).not.toHaveBeenCalled();
     expect(api.update).not.toHaveBeenCalled();
+  });
+
+  it("continues saving after a mobile fullscreen/background flush advances the server revision", async () => {
+    let stored = initial();
+    const commit = async (key: string, update: any) => {
+      if (update.revision !== stored.revision) return { conflict: true, state: { ...stored } };
+      stored = { ...stored, ...update, key, revision: stored.revision + 1 };
+      return { conflict: false, state: { ...stored } };
+    };
+    api.update.mockImplementation(commit);
+    api.keepalive.mockImplementation(commit);
+    const { progress, player } = mount();
+    await progress.ready();
+    await progress.resume();
+    player.currentTime = 75;
+    documentTarget.visibilityState = "hidden";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    await vi.waitFor(() => expect(stored.position).toBe(75));
+    documentTarget.visibilityState = "visible";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    player.currentTime = 80;
+    player.pause();
+    await vi.waitFor(() => expect(progress.state.value?.position).toBe(80));
+    expect(progress.message.value).not.toContain("其他页面");
+    await player.play();
+    player.currentTime = 90;
+    player.emit("video:seeked");
+    await vi.waitFor(() => expect(stored.position).toBe(90));
+  });
+
+  it("serializes background, pagehide and foreground saves using the acknowledged revision", async () => {
+    let finish!: (result: any) => void;
+    api.keepalive.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const { progress, player } = mount();
+    await progress.ready();
+    await progress.resume();
+    player.currentTime = 75;
+    documentTarget.visibilityState = "hidden";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    player.currentTime = 77;
+    windowTarget.dispatchEvent(new Event("pagehide"));
+    player.emit("video:seeked");
+    expect(api.keepalive).toHaveBeenCalledOnce();
+    expect(api.update).not.toHaveBeenCalled();
+    finish({ conflict: false, state: { ...initial(), position: 75, revision: 1 } });
+    await vi.waitFor(() => expect(progress.state.value?.position).toBe(77));
+    expect(api.keepalive.mock.calls[1]?.[1]).toMatchObject({ revision: 1, position: 77 });
+    player.currentTime = 80;
+    documentTarget.visibilityState = "visible";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    await vi.waitFor(() => expect(progress.state.value?.position).toBe(80));
+    expect(api.update.mock.calls[0]?.[1]).toMatchObject({ revision: 2, position: 80 });
+  });
+
+  it("does not drop a paused position while an earlier save is still in flight", async () => {
+    let finish!: (result: any) => void;
+    api.update.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const { progress, player } = mount();
+    await progress.ready();
+    await progress.resume();
+    player.currentTime = 60;
+    player.emit("video:timeupdate");
+    player.currentTime = 80;
+    player.pause();
+    expect(api.update).toHaveBeenCalledOnce();
+    finish({ conflict: false, state: { ...initial(), position: 60, revision: 1 } });
+    await vi.waitFor(() => expect(progress.state.value?.position).toBe(80));
+    expect(api.update.mock.calls[1]?.[1]).toMatchObject({ revision: 1, position: 80 });
+  });
+
+  it("retries a failed background save without losing the pending position", async () => {
+    api.keepalive.mockRejectedValueOnce(new Error("offline"));
+    const { progress, player } = mount();
+    await progress.ready();
+    await progress.resume();
+    player.currentTime = 83;
+    documentTarget.visibilityState = "hidden";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    await vi.waitFor(() => expect(progress.message.value).toContain("联网"));
+    expect(
+      JSON.parse(windowTarget.localStorage.getItem("watch-pending:http://backend:record:one")),
+    ).toMatchObject({ position: 83 });
+    windowTarget.dispatchEvent(new Event("online"));
+    await vi.waitFor(() => expect(progress.state.value?.position).toBe(83));
+  });
+
+  it("still respects a real revision conflict returned by a background save", async () => {
+    api.keepalive.mockResolvedValueOnce({
+      conflict: true,
+      state: { ...initial(), position: 200, revision: 7 },
+    });
+    const { progress, player } = mount();
+    await progress.ready();
+    await progress.resume();
+    documentTarget.visibilityState = "hidden";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    await vi.waitFor(() => expect(progress.message.value).toContain("其他页面"));
+    documentTarget.visibilityState = "visible";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    player.emit("fullscreen");
+    player.currentTime = 600;
+    player.pause();
+    expect(api.update).not.toHaveBeenCalled();
+    expect(progress.state.value?.position).toBe(200);
+  });
+
+  it("recovers when the server saved background progress but its acknowledgement was lost", async () => {
+    let stored = initial();
+    api.keepalive.mockImplementationOnce(async (_key, update) => {
+      stored = { ...stored, ...update, revision: update.revision + 1 };
+      throw new Error("response timed out after commit");
+    });
+    api.update.mockImplementation(async (_key, update) => {
+      if (update.revision !== stored.revision) return { conflict: true, state: { ...stored } };
+      stored = { ...stored, ...update, revision: update.revision + 1 };
+      return { conflict: false, state: { ...stored } };
+    });
+    const { progress, player } = mount();
+    await progress.ready();
+    await progress.resume();
+    player.currentTime = 75;
+    documentTarget.visibilityState = "hidden";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    await vi.waitFor(() => expect(progress.message.value).toContain("联网"));
+    player.currentTime = 80;
+    documentTarget.visibilityState = "visible";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    await vi.waitFor(() => expect(stored.position).toBe(80));
+    expect(progress.message.value).not.toContain("其他页面");
+    expect(progress.state.value?.revision).toBe(2);
+  });
+
+  it("does not mistake a different page's write for a lost acknowledgement", async () => {
+    api.keepalive.mockRejectedValueOnce(new Error("offline"));
+    const { progress, player } = mount();
+    await progress.ready();
+    await progress.resume();
+    player.currentTime = 75;
+    documentTarget.visibilityState = "hidden";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    await vi.waitFor(() => expect(progress.message.value).toContain("联网"));
+    api.update.mockResolvedValueOnce({
+      conflict: true,
+      state: { ...initial(), position: 200, revision: 1 },
+    });
+    documentTarget.visibilityState = "visible";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    await vi.waitFor(() => expect(progress.message.value).toContain("其他页面"));
+    expect(api.update).toHaveBeenCalledOnce();
+    expect(progress.state.value?.position).toBe(200);
+  });
+
+  it("waits for an in-flight background save before completing and advancing", async () => {
+    let finish!: (result: any) => void;
+    api.keepalive.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const ended = vi.fn();
+    const { progress, player } = mount(undefined, ended);
+    await progress.ready();
+    await progress.resume();
+    player.currentTime = 75;
+    documentTarget.visibilityState = "hidden";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    player.currentTime = 1000;
+    player.emit("video:ended");
+    expect(ended).not.toHaveBeenCalled();
+    finish({ conflict: false, state: { ...initial(), position: 75, revision: 1 } });
+    await vi.waitFor(() => expect(ended).toHaveBeenCalledOnce());
+    expect(api.update.mock.calls.at(-1)?.[1]).toMatchObject({ action: "completed", revision: 1 });
+    expect(progress.state.value?.completed).toBe(true);
   });
 
   it("stops automatic saves after another page wins a revision conflict", async () => {

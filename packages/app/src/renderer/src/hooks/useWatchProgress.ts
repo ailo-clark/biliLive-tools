@@ -21,10 +21,13 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
   let dirty = false;
   let lastSave = 0;
   let queuedAction: WatchAction | null = null;
+  let queuedKeepalive = false;
+  let queuedImmediate = false;
   let conflicted = false;
   let endedGeneration = -1;
   let resolving: Promise<void> = Promise.resolve();
   let pendingPosition: number | null = null;
+  let unconfirmed: WatchState | null = null;
   const pendingKey = () =>
     `watch-pending:${request.defaults.baseURL || "local"}:${state.value?.key}`;
 
@@ -45,7 +48,7 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
         : state.value!.duration,
   });
 
-  async function save(action: WatchAction = "progress") {
+  async function save(action: WatchAction = "progress", keepalive = false, immediate = true) {
     if (
       !state.value ||
       !player ||
@@ -55,38 +58,80 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
       return;
     if (saving) {
       dirty = true;
+      queuedKeepalive ||= keepalive;
+      queuedImmediate ||= immediate;
       if (action !== "progress") queuedAction = action;
       if (action !== "progress") await inFlight;
       return;
     }
-    const operation = write(action);
+    const operation = write(action, keepalive);
     inFlight = operation;
     await operation;
     if (inFlight === operation) inFlight = null;
   }
 
-  async function write(action: WatchAction) {
+  async function write(action: WatchAction, keepalive: boolean) {
     saving = true;
     lastSave = Date.now();
     dirty = false;
     const key = state.value!.key;
     const update = payload(action);
+    const storageKey = pendingKey();
+    const serialized = JSON.stringify(update);
     const currentGeneration = generation;
+    const expected: WatchState = {
+      ...state.value!,
+      revision: update.revision + 1,
+      position:
+        action === "restart" || action === "unwatched"
+          ? 0
+          : update.duration > 0
+            ? Math.min(update.position, update.duration)
+            : update.position,
+      duration: update.duration,
+      completed: action === "completed" || (action === "progress" && state.value!.completed),
+    };
     try {
-      window.localStorage.setItem(pendingKey(), JSON.stringify(update));
+      window.localStorage.setItem(storageKey, serialized);
     } catch {}
     try {
-      const result = await watchApi.update(key, update);
+      // Background/fullscreen transitions must share the same revision queue.
+      const result = await (keepalive
+        ? keepaliveUpdate(key, update)
+        : watchApi.update(key, update));
       if (currentGeneration !== generation || disposed) return;
+      if (
+        result.conflict &&
+        unconfirmed &&
+        result.state.key === unconfirmed.key &&
+        result.state.revision === unconfirmed.revision &&
+        result.state.position === unconfirmed.position &&
+        result.state.duration === unconfirmed.duration &&
+        result.state.completed === unconfirmed.completed &&
+        (action !== "progress" || result.state.lastPlayedAt > 0)
+      ) {
+        // A timeout can lose the acknowledgement after our write committed.
+        // Retry only when the conflicting revision exactly matches that write.
+        state.value = result.state;
+        unconfirmed = null;
+        if (action !== "progress") queuedAction = action;
+        queuedKeepalive ||= keepalive;
+        queuedImmediate = true;
+        return;
+      }
       state.value = result.state;
+      unconfirmed = null;
       lastSave = Date.now();
       try {
-        window.localStorage.removeItem(pendingKey());
+        if (window.localStorage.getItem(storageKey) === serialized)
+          window.localStorage.removeItem(storageKey);
       } catch {}
       if (result.conflict) {
         active = false;
         dirty = false;
         queuedAction = null;
+        queuedKeepalive = false;
+        queuedImmediate = false;
         conflicted = true;
         message.value = "其他页面已更新进度，请重新打开视频后继续同步";
       } else {
@@ -95,17 +140,25 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
       }
     } catch {
       if (currentGeneration === generation) {
+        unconfirmed = expected;
         message.value = "进度暂未同步，联网后将重试";
         try {
-          window.localStorage.setItem(pendingKey(), JSON.stringify(update));
+          if (window.localStorage.getItem(storageKey) === null)
+            window.localStorage.setItem(storageKey, serialized);
         } catch {}
       }
     } finally {
       saving = false;
-      if (currentGeneration === generation && queuedAction) {
-        const next = queuedAction;
+      if (
+        currentGeneration === generation &&
+        (queuedAction || queuedKeepalive || queuedImmediate)
+      ) {
+        const next = queuedAction || "progress";
+        const background = queuedKeepalive;
         queuedAction = null;
-        await save(next);
+        queuedKeepalive = false;
+        queuedImmediate = false;
+        await save(next, background);
       } else if (currentGeneration === generation && dirty && Date.now() - lastSave >= 5000) {
         void save();
       }
@@ -120,7 +173,10 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
     conflicted = false;
     dirty = false;
     queuedAction = null;
+    queuedKeepalive = false;
+    queuedImmediate = false;
     pendingPosition = null;
+    unconfirmed = null;
     if (!source.value?.recordId && !source.value?.videoId) return;
     try {
       let data = await watchApi.resolve(source.value);
@@ -219,7 +275,7 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
     instance.on("video:playing", begin);
     if (instance.playing) begin();
     instance.on("video:timeupdate", () => {
-      if (active && Date.now() - lastSave >= 5000) void save();
+      if (active && Date.now() - lastSave >= 5000) void save("progress", false, false);
     });
     instance.on("video:pause", () => {
       void save();
@@ -227,6 +283,8 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
     instance.on("video:seeked", () => {
       if (active) void save();
     });
+    instance.on("fullscreen", () => void save());
+    instance.on("fullscreenWeb", () => void save());
     instance.on("video:ended", () => {
       const current = generation;
       if (endedGeneration === current) return;
@@ -248,15 +306,18 @@ export function useWatchProgress(source: Ref<WatchSource | undefined>, onFinishe
   }
 
   function flush() {
-    if (!state.value || !active || resumeAvailable.value || conflicted || !player || saving) return;
+    if (!state.value || !active || resumeAvailable.value || conflicted || !player) return;
     const update = payload("progress");
     try {
       window.localStorage.setItem(pendingKey(), JSON.stringify(update));
     } catch {}
-    void keepaliveUpdate(state.value.key, update).catch(() => {});
+    // Start immediately for unload, but track and acknowledge this write while
+    // the document survives (as it does after mobile native fullscreen).
+    void save("progress", true);
   }
   const visibility = () => {
     if (document.visibilityState === "hidden") flush();
+    else if (document.visibilityState === "visible") void save();
   };
   const retry = () => {
     void save();

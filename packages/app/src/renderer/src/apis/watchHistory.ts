@@ -183,15 +183,28 @@ export function sessionWatchLabel(watch?: SessionWatchState) {
   return `${label} · 已看完 ${watch.completedCount}/${watch.totalCount} 段`;
 }
 
-export function keepaliveUpdate(key: string, payload: WatchUpdate) {
+export async function keepaliveUpdate(key: string, payload: WatchUpdate) {
   const authorization =
     window.localStorage.getItem("key") || String(request.defaults.headers.Authorization || "");
-  return fetch(request.getUri({ url: `/watch-history/${key}` }), {
-    method: "PUT",
-    keepalive: true,
-    headers: { "Content-Type": "application/json", Authorization: authorization },
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(request.getUri({ url: `/watch-history/${key}` }), {
+      method: "PUT",
+      keepalive: true,
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json", Authorization: authorization },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok && response.status !== 409)
+      throw new Error(`保存播放进度失败：HTTP ${response.status}`);
+    return {
+      conflict: response.status === 409,
+      state: (await response.json()) as WatchState,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function watchLabel(state?: WatchState | null) {
