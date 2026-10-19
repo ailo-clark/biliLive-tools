@@ -17,6 +17,11 @@ http {{
     font/woff2 woff2; font/woff woff; application/wasm wasm;
   }}
   access_log off;
+  client_body_temp_path {root}/client-body;
+  proxy_temp_path {root}/proxy;
+  fastcgi_temp_path {root}/fastcgi;
+  uwsgi_temp_path {root}/uwsgi;
+  scgi_temp_path {root}/scgi;
   map $cookie_nas_test $need_reject {{ default 1; local-auth 0; }}
   log_format origin_log '$request_uri';
   server {{

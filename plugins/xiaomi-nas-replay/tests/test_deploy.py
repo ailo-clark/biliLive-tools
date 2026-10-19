@@ -412,7 +412,8 @@ class Deployment(unittest.TestCase):
             self.skipTest("nginx binary is unavailable")
         (self.root / "logs").mkdir()
         config = self.root / "nginx.conf"
-        config.write_text(f"pid {self.root}/nginx.pid;\nerror_log {self.root}/nginx.log;\nevents {{}}\nhttp {{ server {{ listen 127.0.0.1:18045; set $need_reject 1; include {self.manager.path('/etc/nginx/conf.d/luci/plugincenter.conf')}; }} }}\n")
+        temporary = " ".join(f"{module}_temp_path {self.root}/{module};" for module in ("client_body", "proxy", "fastcgi", "uwsgi", "scgi"))
+        config.write_text(f"pid {self.root}/nginx.pid;\nerror_log {self.root}/nginx.log;\nevents {{}}\nhttp {{ access_log off; {temporary} server {{ listen 127.0.0.1:18045; set $need_reject 1; include {self.manager.path('/etc/nginx/conf.d/luci/plugincenter.conf')}; }} }}\n")
         old = self.system.nginx_test
         def nginx_test():
             old()
