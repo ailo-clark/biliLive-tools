@@ -1,4 +1,5 @@
 import request from "./request";
+import { getAuthKey } from "./authStorage";
 
 export interface WatchState {
   key: string;
@@ -184,8 +185,7 @@ export function sessionWatchLabel(watch?: SessionWatchState) {
 }
 
 export async function keepaliveUpdate(key: string, payload: WatchUpdate) {
-  const authorization =
-    window.localStorage.getItem("key") || String(request.defaults.headers.Authorization || "");
+  const authorization = getAuthKey() || String(request.defaults.headers.Authorization || "");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {

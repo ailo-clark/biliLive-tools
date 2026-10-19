@@ -1,0 +1,5 @@
+__pycache__/
+src/ui/index.html
+src/ui/assets/
+MANIFEST.json
+BUILD.json

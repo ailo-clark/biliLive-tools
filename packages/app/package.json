@@ -13,6 +13,7 @@
     "start": "electron-vite preview",
     "build": "pnpm run typecheck && electron-vite build",
     "build:webui": "pnpm run typecheck && electron-vite build --mode webui",
+    "build:nas-replay": "vue-tsc --noEmit -p nas-replay/tsconfig.json --composite false && vite build --config nas-replay/vite.config.ts",
     "postinstall": "electron-builder install-app-deps",
     "build:app": "pnpm run build && electron-builder --config",
     "build:app:no-ffmpeg": "pnpm run build && electron-builder --config electron-builder-no-ffmpeg.yml",

@@ -111,6 +111,7 @@
       :date="selectedDate"
       :sessions="selectedSessions"
       :time-zone="data.timeZone"
+      @changed="load(data?.month)"
     />
   </div>
 </template>

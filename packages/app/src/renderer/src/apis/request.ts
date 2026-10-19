@@ -1,5 +1,6 @@
 import axios from "axios";
-import router from "../routers/index";
+import router from "@renderer/routers";
+import { getAuthKey, clearAuthKey, nasApiBase } from "./authStorage";
 
 const api = axios.create({
   headers: {
@@ -13,6 +14,10 @@ if (import.meta.hot) {
 }
 
 export async function init() {
+  if (import.meta.env.VITE_NAS_REPLAY === "true") {
+    api.defaults.baseURL = nasApiBase();
+    return;
+  }
   if (window.isWeb) {
     const baseURL = window.localStorage.getItem("api");
     if (baseURL) {
@@ -33,11 +38,14 @@ export async function init() {
 api.interceptors.request.use(
   (config) => {
     // header authorization
-    const keyStorage = window.localStorage.getItem("key");
+    const keyStorage = getAuthKey();
     if (keyStorage) {
       config.headers.Authorization = keyStorage;
     }
-    const baseURL = window.localStorage.getItem("api");
+    const baseURL =
+      import.meta.env.VITE_NAS_REPLAY === "true"
+        ? nasApiBase()
+        : window.localStorage.getItem("api");
     if (baseURL) {
       config.baseURL = baseURL;
     }
@@ -55,7 +63,7 @@ api.interceptors.response.use(
   (error) => {
     const route = router.currentRoute.value;
     if (error?.response?.status === 401 && route.name !== "Login") {
-      window.localStorage.removeItem("key");
+      clearAuthKey();
       router.push("/login");
     }
     return Promise.reject(error?.response?.data ?? error?.response?.status);

@@ -1,0 +1,12 @@
+#!/bin/sh
+# Viewing plugin has no recording/container lifecycle of its own.
+set -eu
+case "${1:-}" in
+  preinstall|postinstall|enable|start) exit 0 ;;
+  status) echo running; exit 0 ;;
+  disable|stop) exit 0 ;;
+  preuninstall|postuninstall)
+    echo 'Use the supplied rollback.sh from SSH to remove the plugin safely.' >&2
+    exit 1 ;;
+  *) exit 2 ;;
+esac

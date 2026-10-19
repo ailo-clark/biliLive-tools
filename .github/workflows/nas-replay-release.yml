@@ -1,0 +1,77 @@
+name: Build and release Xiaomi NAS replay plugin
+
+on:
+  push:
+    branches: [feat/xiaomi-nas-replay-plugin]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nas-replay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: Activate pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.5.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Prepare native database and backend
+        run: |
+          pnpm --filter @biliLive-tools/shared rebuild better-sqlite3
+          pnpm run build:base
+          pnpm --filter bililive-cli build
+      - name: Test shared playback and session marking
+        working-directory: packages/app
+        run: pnpm exec vitest run --environment node test/markSession.test.ts test/nasConnection.test.ts test/watchProgress.test.ts test/watchHistoryApi.test.ts test/watchCalendar.test.ts test/index.test.ts
+      - name: Build dedicated frontend and stage plugin
+        run: |
+          pnpm --filter biliLive-tools build:nas-replay
+          python3 plugins/xiaomi-nas-replay/scripts/prepare.py
+      - name: Install browser integration dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx ffmpeg
+          npm install --prefix "$RUNNER_TEMP/nas-browser" playwright@1.64.0
+          node "$RUNNER_TEMP/nas-browser/node_modules/playwright/cli.js" install --with-deps chromium
+          echo "PLAYWRIGHT_MODULE=$RUNNER_TEMP/nas-browser/node_modules/playwright" >> "$GITHUB_ENV"
+      - name: Test transactional installation and rollback
+        env:
+          NGINX_BIN: /usr/sbin/nginx
+        run: python3 -m unittest discover -s plugins/xiaomi-nas-replay/tests -p 'test_*.py' -v
+      - name: Test desktop and mobile against real backend
+        env:
+          NGINX_BIN: /usr/sbin/nginx
+        run: node plugins/xiaomi-nas-replay/tests/browser.cjs
+      - name: Package ready-to-install ZIP
+        run: python3 plugins/xiaomi-nas-replay/scripts/pack.py --output release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xiaomi-nas-replay-installer
+          path: release/*
+          if-no-files-found: error
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=$(python3 -c 'import json; print(json.load(open("plugins/xiaomi-nas-replay/INFO"))["version"])')
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          tag="nas-replay-v$version"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)
+            [[ "$existing" == "$GITHUB_SHA" ]] || { echo 'Version already published from another commit; bump INFO before releasing.'; exit 1; }
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --title "小米 NAS 录播回放 v$version" --notes-file plugins/xiaomi-nas-replay/RELEASE.md
+          fi
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" release/*.zip release/SHA256SUMS.txt --clobber
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false

@@ -1,0 +1,25 @@
+{
+  "title": "录播回放",
+  "desc": "小米 NAS 专用录播日历与播放器",
+  "icon": "/bililivereplay.icon",
+  "type": "url",
+  "dev_type": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "url": [
+    {
+      "dev_type": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "url": "/index.html#/mobile"
+    }
+  ],
+  "sortid": 45,
+  "widget": []
+}
