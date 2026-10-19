@@ -47,11 +47,11 @@ jobs:
       - name: Test transactional installation and rollback
         env:
           NGINX_BIN: /usr/sbin/nginx
-        run: python3 -m unittest discover -s plugins/xiaomi-nas-replay/tests -p 'test_*.py' -v
+        run: python3 plugins/xiaomi-nas-replay/tests/ci_check.py python3 -m unittest discover -s plugins/xiaomi-nas-replay/tests -p 'test_*.py' -v
       - name: Test desktop and mobile against real backend
         env:
           NGINX_BIN: /usr/sbin/nginx
-        run: node plugins/xiaomi-nas-replay/tests/browser.cjs
+        run: python3 plugins/xiaomi-nas-replay/tests/ci_check.py node plugins/xiaomi-nas-replay/tests/browser.cjs
       - name: Package ready-to-install ZIP
         run: python3 plugins/xiaomi-nas-replay/scripts/pack.py --output release
       - uses: actions/upload-artifact@v4
