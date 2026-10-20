@@ -8,7 +8,7 @@ import unittest
 import test_deploy as fixtures
 ROOT, SHARED = fixtures.ROOT, fixtures.SHARED
 VERSION = json.loads((ROOT / "INFO").read_text())["version"]
-NEXT_VERSION = "0.1.2"
+NEXT_VERSION = VERSION.rsplit(".", 1)[0] + "." + str(int(VERSION.rsplit(".", 1)[1]) + 1)
 
 
 class Upgrade(unittest.TestCase):

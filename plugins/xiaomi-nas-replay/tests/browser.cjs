@@ -240,7 +240,7 @@ async function main() {
   });
   const errors = [];
   const contexts = [];
-  async function context(mobile) {
+  async function context(mobile, entryPrefix = mobile ? prefix : "/D:" + prefix) {
     const ctx = await browser.newContext(
       mobile
         ? {
@@ -260,12 +260,29 @@ async function main() {
       localStorage.setItem("api", "/api");
     });
     const page = await ctx.newPage();
+    const apiRequests = [];
+    page.on("request", (request) => {
+      if (["xhr", "fetch"].includes(request.resourceType()))
+        apiRequests.push(new URL(request.url()).pathname);
+    });
     page.setDefaultTimeout(15000);
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.goto(origin + prefix + "/index.html#/mobile");
+    await page.goto(origin + entryPrefix + "/index.html#/mobile");
+    await page.getByPlaceholder("输入 BILILIVE_TOOLS_PASSKEY").fill("wrong-test-key");
+    await page.getByRole("button", { name: "进入回放", exact: true }).click();
+    await page
+      .getByText("登录密钥不正确，请检查 BILILIVE_TOOLS_PASSKEY", { exact: true })
+      .waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem("nas-replay:key")), null);
     await page.getByPlaceholder("输入 BILILIVE_TOOLS_PASSKEY").fill(secret);
     await page.getByRole("button", { name: "进入回放", exact: true }).click();
     await page.getByRole("button", { name: "查看 回放测试主播 的录播日历", exact: true }).waitFor();
+    const canonical = entryPrefix.slice(entryPrefix.indexOf("/plugin/")) + "/api/";
+    assert(apiRequests.length >= 3);
+    assert(
+      apiRequests.every((url) => url.startsWith(canonical)),
+      "all login and viewing APIs must use the canonical plugin route: " + apiRequests.join(", "),
+    );
     assert.equal(await page.evaluate(() => localStorage.getItem("key")), "other-app-key");
     assert.equal(await page.evaluate(() => !!document.querySelector("iframe")), false);
     assert(!(await page.locator("body").innerText()).includes("系统设置"));
@@ -319,7 +336,13 @@ async function main() {
   await desktop.waitForTimeout(350);
   await desktop.screenshot({ path: path.join(root, "desktop-dark.png"), fullPage: true });
   console.log(
-    "PASS desktop calendar: multiple sessions, one-click whole-session completion, preserved progress, refreshed day status, dark theme",
+    "PASS desktop /D:/ entry: login errors and retry, canonical API, calendar, whole-session completion, preserved progress, dark theme",
+  );
+  const alternateDesktop = await context(false, "/C:/plugin/u12345/bililivereplay");
+  await alternateDesktop.context().close();
+  contexts.splice(contexts.indexOf(alternateDesktop.context()), 1);
+  console.log(
+    "PASS desktop /C:/ entry with u-prefixed UID: authenticated login and streamer listing",
   );
   const mobile = await context(true);
   await mobile.getByRole("button", { name: "查看 回放测试主播 的录播日历", exact: true }).click();

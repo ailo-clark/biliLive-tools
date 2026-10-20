@@ -2,15 +2,15 @@
   "plugin": "bililivereplay",
   "name": "录播回放",
   "id": 109,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "tags": [
     "video"
   ],
-  "timestamp": 1792454400,
+  "timestamp": 1792501875,
   "desc": "独立观看页面，复用 biliLive-tools 播放器和观看进度接口",
   "developer": "ailo-clark",
   "publisher": "local",
-  "changelog": "新增每两分钟自动恢复；部署和回滚免 systemctl；回滚先停止自动恢复并保留其他插件配置",
+  "changelog": "修复小米电脑客户端带 Windows 盘符路径时登录失败；区分密钥、NAS 权限、接口和 Docker 连接错误",
   "system": false,
   "size": 0,
   "port": "3000",

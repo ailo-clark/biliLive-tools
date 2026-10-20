@@ -41,7 +41,7 @@
                 ><component :is="Component" :key="viewRoute.fullPath"
               /></router-view>
             </main>
-            <footer class="app-footer">录播回放 · v0.1.1</footer>
+            <footer class="app-footer">录播回放 · v0.1.2</footer>
           </div>
         </n-message-provider></n-dialog-provider
       ></n-notification-provider

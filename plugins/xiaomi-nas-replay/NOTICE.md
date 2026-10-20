@@ -1,6 +1,6 @@
 # 许可证与来源
 
-本插件沿用 biliLive-tools 的 GPL-3.0-only 许可证。包内包含独立构建的观看页面及部署源码；完整共享前端源码随同 GitHub Release 的 `nas-replay-v0.1.1` 标签公开，见对应 Source code 归档。
+本插件沿用 biliLive-tools 的 GPL-3.0-only 许可证。包内包含独立构建的观看页面及部署源码；完整共享前端源码随同 GitHub Release 的 `nas-replay-v0.1.2` 标签公开，见对应 Source code 归档。
 
 - 项目与共享播放器源码：https://github.com/ailo-clark/biliLive-tools
 - 上游项目：https://github.com/renmu123/biliLive-tools

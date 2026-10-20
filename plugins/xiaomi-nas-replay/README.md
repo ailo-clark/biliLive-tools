@@ -4,10 +4,10 @@
 
 ## 安装
 
-下载 GitHub Release 中的 `bililivereplay-0.1.1.zip`（不是 GitHub 自动生成的 Source code 压缩包），解压后在 NAS 的 root SSH 终端执行：
+下载 GitHub Release 中的 `bililivereplay-0.1.2.zip`（不是 GitHub 自动生成的 Source code 压缩包），解压后在 NAS 的 root SSH 终端执行：
 
 ```sh
-cd bililivereplay-0.1.1
+cd bililivereplay-0.1.2
 sh install.sh
 ```
 

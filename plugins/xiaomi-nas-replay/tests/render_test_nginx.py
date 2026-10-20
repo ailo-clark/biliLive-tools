@@ -40,6 +40,12 @@ http {{
   server {{
     listen 127.0.0.1:18043;
     {render("12345", "http://127.0.0.1:18042")}
+    # Model Electron's Windows drive-prefixed entry. Static assets load through
+    # its proxy, while application API requests must use /plugin/<uid>/... .
+    location ~ "^/[A-Za-z]:/plugin/" {{
+      if ($need_reject) {{ return 403; }}
+      proxy_pass http://127.0.0.1:18044;
+    }}
     location /plugin/ {{
       if ($need_reject) {{ return 403; }}
       proxy_pass http://127.0.0.1:18044;

@@ -23,6 +23,7 @@
 import { useRoute, useRouter } from "vue-router";
 import request from "@renderer/apis/request";
 import { setAuthKey, clearAuthKey } from "@renderer/apis/authStorage";
+import { ReplayLoginError, verifyReplayLogin } from "./login";
 const route = useRoute();
 const router = useRouter();
 const key = ref("");
@@ -34,20 +35,18 @@ async function login() {
   error.value = "";
   try {
     clearAuthKey();
-    await request.get("/common/version", { headers: { Authorization: key.value.trim() } });
-    // Detect an incompatible backend before opening empty calendar screens.
-    await request.get("/watch-history/streamers", {
-      headers: { Authorization: key.value.trim() },
-      params: { offset: 0 },
-    });
+    await verifyReplayLogin(request, key.value.trim());
     setAuthKey(key.value.trim());
     const target =
       typeof route.query.redirect === "string" && /^\/mobile(?:\/|$)/.test(route.query.redirect)
         ? route.query.redirect
         : "/mobile";
     await router.replace(target);
-  } catch {
-    error.value = "登录失败：请检查密钥、Docker 服务状态及观看接口版本";
+  } catch (cause) {
+    error.value =
+      cause instanceof ReplayLoginError
+        ? cause.message
+        : "无法连接录播接口，请检查 NAS 客户端连接及 Docker 服务后重试";
   } finally {
     loading.value = false;
   }
