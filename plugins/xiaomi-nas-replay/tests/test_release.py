@@ -30,10 +30,11 @@ class ReleaseArchive(unittest.TestCase):
                 self.assertTrue(any("/src/ui/assets/" in name and name.endswith(".js") for name in names))
                 self.assertFalse(any(name.endswith(("/bridge.js", "/shell.js")) for name in names))
                 self.assertTrue(any(name.endswith("/部署手册.md") for name in names))
-                entry = bundle.getinfo("bililivereplay-0.1.0/install.sh")
+                name = "bililivereplay-" + json.loads((source / "INFO").read_text())["version"]
+                entry = bundle.getinfo(name + "/install.sh")
                 self.assertEqual((entry.external_attr >> 16) & 0o777, 0o755)
                 bundle.extractall(root / "extracted")
-            extracted = root / "extracted/bililivereplay-0.1.0"
+            extracted = root / "extracted" / name
             verify_package(extracted)
             fixture = fixtures.Deployment("runTest")
             fixture.setUp()

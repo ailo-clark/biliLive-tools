@@ -2,15 +2,15 @@
   "plugin": "bililivereplay",
   "name": "录播回放",
   "id": 109,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "tags": [
     "video"
   ],
-  "timestamp": 1792368000,
+  "timestamp": 1792454400,
   "desc": "独立观看页面，复用 biliLive-tools 播放器和观看进度接口",
   "developer": "ailo-clark",
   "publisher": "local",
-  "changelog": "首版：手机与电脑响应式页面、主播日历、整场标记已看、分段连播、一键部署及回滚",
+  "changelog": "新增每两分钟自动恢复；部署和回滚免 systemctl；回滚先停止自动恢复并保留其他插件配置",
   "system": false,
   "size": 0,
   "port": "3000",

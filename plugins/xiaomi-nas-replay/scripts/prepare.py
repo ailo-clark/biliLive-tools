@@ -23,7 +23,7 @@ for name in ("index.html", "assets"):
         shutil.copy2(SOURCE / name, destination)
 revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO, text=True).strip()
 (ROOT / "BUILD.json").write_text(json.dumps({
-    "pluginVersion": "0.1.0", "mode": "standalone-replay-frontend",
+    "pluginVersion": json.loads((ROOT / "INFO").read_text())["version"], "mode": "standalone-replay-frontend",
     "sourceRevision": revision, "sharedPlayerAndProgress": True,
     "dockerWebProxy": False, "responseRewriting": False,
     "minimumBackend": "watch-calendar-20261015",

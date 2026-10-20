@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "deploy"))
-from manage import Manager, PLUGIN, SHARED, UNIT, System, backing_path, verify_package
+from manage import Manager, PLUGIN, SHARED, UNIT, UNIT_LINK, CRON, System, backing_path, verify_package
 from nginx import render, remove_block, validate_upstream
 from static_cgi import serve
 
@@ -26,8 +26,6 @@ class FakeSystem:
         self.events = []
         self.fail_test_once = False
         self.fail_reload_once = False
-        self.fail_enable_once = False
-        self.enabled = False
 
     def preflight(self, upstream):
         self.events.append("preflight")
@@ -43,22 +41,6 @@ class FakeSystem:
         if self.fail_reload_once:
             self.fail_reload_once = False
             raise RuntimeError("simulated nginx reload failure")
-
-    def daemon_reload(self):
-        self.events.append("daemon-reload")
-
-    def enable(self):
-        self.events.append("enable")
-        self.enabled = True
-        if self.fail_enable_once:
-            self.fail_enable_once = False
-            raise RuntimeError("simulated partial systemctl enable failure")
-
-    def disable(self):
-        self.events.append("disable")
-        self.enabled = False
-
-
 class Deployment(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -81,6 +63,7 @@ class Deployment(unittest.TestCase):
             path.write_bytes(data)
             path.chmod(0o640)
         self.manager.path("/tmp").mkdir()
+        self.manager.path("/etc/cron.d").mkdir(parents=True)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -95,7 +78,8 @@ class Deployment(unittest.TestCase):
         state = self.manager.load()
         for logical in state["owned"]:
             self.assertFalse(os.path.lexists(self.manager.path(logical)), logical)
-        self.assertFalse(self.system.enabled)
+        self.assertFalse(os.path.lexists(self.manager.path(UNIT_LINK)))
+        self.assertFalse(self.manager.path(CRON).exists())
 
     def test_check_does_not_modify_configuration(self):
         self.manager.inspect(self.uid, "http://127.0.0.1:3000", ROOT)
@@ -131,10 +115,15 @@ class Deployment(unittest.TestCase):
             self.install()
         self.assert_original()
 
-    def test_partial_systemctl_enable_auto_rolls_back(self):
-        self.system.fail_enable_once = True
-        with self.assertRaisesRegex(RuntimeError, "partial systemctl"):
-            self.install()
+    def test_partial_scheduler_install_auto_rolls_back(self):
+        from manage import atomic
+        def fail_cron(path, *args, **kwargs):
+            if Path(path) == self.manager.path(CRON):
+                raise RuntimeError("simulated cron write failure")
+            return atomic(path, *args, **kwargs)
+        with patch("manage.atomic", side_effect=fail_cron):
+            with self.assertRaisesRegex(RuntimeError, "cron write failure"):
+                self.install()
         self.assert_original()
 
     def test_existing_other_plugin_changes_survive_rollback(self):
@@ -173,7 +162,8 @@ class Deployment(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "被修改"):
             self.manager.rollback()
         self.assertEqual(self.manager.path(state["nginx_path"]).read_bytes(), old_nginx)
-        self.assertTrue(self.system.enabled)
+        self.assertTrue(os.path.lexists(self.manager.path(UNIT_LINK)))
+        self.assertTrue(self.manager.path(CRON).is_file())
 
     def test_modified_nginx_block_stops_rollback(self):
         state = self.install()

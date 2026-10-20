@@ -22,8 +22,18 @@ import urllib.request
 from nginx import PLUGIN, markers, render, remove_block, validate_upstream
 
 UNIT = "bililivereplay-restore.service"
+UNIT_PATH = f"/etc/systemd/system/{UNIT}"
+UNIT_LINK = f"/etc/systemd/system/multi-user.target.wants/{UNIT}"
+CRON = "/etc/cron.d/bililivereplay"
 STATE = "/data/bililive-nas-replay"
 SHARED = ["/etc/config/plugin", "/data/etc/upper/config/plugin"]
+
+
+def recovery_cron():
+    # Debian cron automatically notices this dedicated file; no daemon restart.
+    return ("# Managed by bililivereplay; remove through rollback.sh.\n"
+            "SHELL=/bin/sh\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
+            f"*/2 * * * * root /usr/bin/python3 {STATE}/runtime/manage.py restore >/dev/null 2>&1\n")
 
 
 def same_entry(actual, expected):
@@ -128,19 +138,11 @@ class System:
     def nginx_reload(self):
         self.run(["nginx", "-s", "reload"])
 
-    def daemon_reload(self):
-        self.run(["systemctl", "daemon-reload"])
-
-    def enable(self):
-        self.run(["systemctl", "enable", UNIT])
-
-    def disable(self):
-        self.run(["systemctl", "disable", "--now", UNIT], ok=(0, 1, 5))
-
     def preflight(self, upstream, no_probe=False):
-        for command in ("nginx", "systemctl"):
-            if not shutil.which(command):
-                raise RuntimeError(f"缺少命令：{command}")
+        if not shutil.which("nginx"):
+            raise RuntimeError("缺少命令：nginx")
+        if not (shutil.which("cron") or Path("/usr/sbin/cron").is_file()):
+            raise RuntimeError("未发现支持 /etc/cron.d 的 cron，停止安装；不会自动启动或替换调度服务")
         result = self.run(["nginx", "-T"])
         if not re.search(r"\$(?:need_reject)\b", result.stdout):
             raise RuntimeError("当前 Nginx 未发现 NAS 的 need_reject 认证变量，拒绝安装")
@@ -279,7 +281,9 @@ class Manager:
             if current["status"] not in ("rolled_back",):
                 raise RuntimeError("已有部署记录。请先运行 status；需要重装时先 rollback")
         home = f"/home/u{uid}/plugin/{PLUGIN}"
-        owned = [home, f"/data/plugin/www/u{uid}/{PLUGIN}", f"/data/plugin/www/icon/{PLUGIN}.icon", f"/etc/systemd/system/{UNIT}"]
+        if not self.path("/etc/cron.d").is_dir():
+            raise RuntimeError("未找到 /etc/cron.d，无法安装定时恢复任务")
+        owned = [home, f"/data/plugin/www/u{uid}/{PLUGIN}", f"/data/plugin/www/icon/{PLUGIN}.icon", UNIT_PATH, UNIT_LINK, CRON]
         for logical in owned:
             if os.path.lexists(self.path(logical)):
                 raise RuntimeError(f"目标已存在，拒绝覆盖：{logical}")
@@ -332,7 +336,8 @@ class Manager:
         self.base.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.base, 0o700)
         stamp = time.strftime("%Y%m%d-%H%M%S") + "-" + os.urandom(3).hex()
-        state.update({"schema": 1, "status": "installing", "backup_id": stamp, "created_dirs": [], "changed": [], "unit_enabled": False})
+        state.update({"schema": 2, "status": "installing", "backup_id": stamp, "created_dirs": [], "changed": [], "unit_enabled": False,
+                      "cron": recovery_cron()})
         backup = self.base / "backups" / stamp
         backup.mkdir(parents=True, mode=0o700)
         state["backup"] = str(backup.relative_to(self.root))
@@ -353,12 +358,17 @@ class Manager:
         self.save(state)
         try:
             # Keep recovery code even if the uploaded ZIP is deleted.
+            # On undo, retain this manager's safe scheduling/rollback code even
+            # when restoring v0.1.0's frontend. Read before replacing runtime:
+            # this process may itself be running from that directory.
+            runtime_files = {name: (Path(__file__).parent / name).read_bytes()
+                             for name in ("manage.py", "nginx.py", "rollback.sh", "status.sh")}
             runtime = self.base / "runtime"
             if runtime.exists():
                 shutil.rmtree(runtime)
             runtime.mkdir(mode=0o700)
-            for name in ("manage.py", "nginx.py", "rollback.sh", "status.sh"):
-                shutil.copy2(package / "deploy" / name, runtime / name)
+            for name, content in runtime_files.items():
+                atomic(runtime / name, content, 0o755 if name.endswith(".sh") else 0o600)
             home = self.path(state["home"])
             self.ensure_parent(home, state)
             state["changed"].append(state["home"])
@@ -433,10 +443,15 @@ WantedBy=multi-user.target
             if payload.exists():
                 shutil.rmtree(payload)
             shutil.copytree(home, payload)
-            self.system.daemon_reload()
-            state["unit_enabled"] = True  # Journal before enable, which can partially succeed.
+            # Enabling an on-boot oneshot is just a wants symlink. Do not call
+            # systemctl from a NAS PTY or recursively from the restore unit:
+            # affected firmware can deadlock its D-Bus job queue.
+            state["changed"].extend([UNIT_LINK, CRON])
             self.save(state)
-            self.system.enable()
+            os.symlink(f"../{UNIT}", self.path(UNIT_LINK))
+            state["unit_enabled"] = True
+            self.save(state)
+            atomic(self.path(CRON), state["cron"].encode(), 0o644)
             release = self.base / "releases" / stamp
             shutil.copytree(package, release)
             state["package_backup"] = str(release.relative_to(self.root))
@@ -525,7 +540,7 @@ WantedBy=multi-user.target
             return restored
         return self.rollback()
 
-    def rollback_plan(self, state):
+    def rollback_plan(self, state, observed=None):
         plan = {}
         shared_targets = self.state_shared_targets(state)
         for logical in state["changed"]:
@@ -542,7 +557,10 @@ WantedBy=multi-user.target
                 if snap["exists"]:
                     raise RuntimeError(f"共享配置已丢失，拒绝覆盖：{logical}")
                 continue
-            current = path.read_bytes()
+            snap_now = self.snapshot(path)
+            current = self.original(snap_now)
+            if observed is not None:
+                observed[logical] = snap_now
             if original is not None and current == original:
                 continue  # A previous rollback may already have restored this file.
             if logical == state["nginx_path"]:
@@ -563,32 +581,62 @@ WantedBy=multi-user.target
                 plan[logical] = original  # Byte-for-byte restore when unrelated fields are unchanged.
             else:
                 plan[logical] = (json.dumps(data, ensure_ascii=False, indent=1) + "\n").encode()
-        unit = self.path(state["owned"][3])
-        if str(state["owned"][3]) in state["changed"] and unit.exists() and unit.read_text() != state.get("unit"):
-            raise RuntimeError("恢复服务已被修改，回滚已停止")
+        self.check_recovery_files(state)
         return plan
+
+    def check_recovery_files(self, state):
+        for logical, expected in ((UNIT_PATH, state.get("unit")), (CRON, state.get("cron"))):
+            if logical not in state["changed"] or not os.path.lexists(self.path(logical)):
+                continue
+            path = self.path(logical)
+            if path.is_symlink() or not path.is_file() or path.read_text() != expected:
+                raise RuntimeError(f"自动恢复配置已被修改，停止操作：{logical}")
+        # Also recognize the link created by v0.1.0's systemctl enable.
+        link = self.path(UNIT_LINK)
+        if (state.get("unit_enabled") or UNIT_LINK in state["changed"]) and os.path.lexists(link):
+            if not link.is_symlink() or os.readlink(link) not in (f"../{UNIT}", UNIT_PATH, str(self.path(UNIT_PATH))):
+                raise RuntimeError("开机恢复链接被其他配置占用，停止操作")
+
+    def stop_recovery(self, state):
+        # Caller has saved rolling_back and holds the same flock as cron/boot.
+        # Never stop a systemd job while holding the lock that job may need.
+        if CRON in state["changed"]:
+            self.path(CRON).unlink(missing_ok=True)
+        if state.get("unit_enabled") or UNIT_LINK in state["changed"]:
+            self.path(UNIT_LINK).unlink(missing_ok=True)
 
     def rollback(self, automatic=False):
         state = self.load()
         if state["status"] == "rolled_back":
             return state
-        plan = self.rollback_plan(state)  # Detect conflicts before any write.
-        current = {logical: self.snapshot(self.path(logical)) for logical in plan}
+        current = {}
+        plan = self.rollback_plan(state, current)  # Detect conflicts before any write.
         state["status"] = "rolling_back"
         self.save(state)  # Restore service refuses to re-create a rolling-back plugin.
+        self.stop_recovery(state)  # Disable scheduling BEFORE removing any registration.
+        applied = {}
         try:
             for logical, value in plan.items():
                 path = self.path(logical)
+                if self.snapshot(path) != current[logical]:
+                    raise RuntimeError(f"共享配置在回滚过程中发生变化，已停止：{logical}")
                 if value is None:
                     path.unlink(missing_ok=True)
                 else:
                     snap = state["snapshots"][logical]
                     atomic(path, value, snap.get("mode", 0o644), (snap["uid"], snap["gid"]) if snap["exists"] and os.geteuid() == 0 else None)
+                applied[logical] = value
             self.system.nginx_test()
             self.system.nginx_reload()
         except Exception:
-            for logical, snap in current.items():
+            for logical, value in applied.items():
                 path = self.path(logical)
+                # An unrelated writer does not honor our deployment lock. Never
+                # overwrite changes made after this rollback's own write.
+                actual = self.snapshot(path)
+                if actual["exists"] != (value is not None) or (actual["exists"] and self.original(actual) != value):
+                    continue
+                snap = current[logical]
                 if snap["exists"]:
                     atomic(path, self.original(snap), snap["mode"])
                 else:
@@ -596,8 +644,6 @@ WantedBy=multi-user.target
             state["status"] = "recovery_needed"
             self.save(state)
             raise
-        if state.get("unit_enabled"):
-            self.system.disable()
         # Remove only resources this transaction created; container/data untouched.
         for logical in reversed(state["owned"]):
             if logical not in state["changed"]:
@@ -607,7 +653,6 @@ WantedBy=multi-user.target
                 path.unlink()
             elif path.is_dir():
                 shutil.rmtree(path)
-        self.system.daemon_reload()
         for logical in reversed(state["created_dirs"]):
             try:
                 self.path(logical).rmdir()
@@ -618,10 +663,57 @@ WantedBy=multi-user.target
         return state
 
     def restore(self):
-        state = self.load()
-        if state["status"] != "installed":
+        if not self.manifest.exists():
             return
-        # On boot the NAS may rebuild .list and the plugin runtime directory.
+        try:
+            state = self.load()
+            if state["status"] != "installed":
+                return
+            self.restore_installed(state)
+        except Exception as error:
+            self.recovery_result("error", str(error))
+            raise
+        self.recovery_result("ok")
+
+    def recovery_result(self, status, message=""):
+        atomic(self.base / "recovery.json", (json.dumps({
+            "status": status, "checked_at": int(time.time()), "message": message[:512],
+        }, ensure_ascii=False) + "\n").encode(), 0o600)
+
+    def restore_installed(self, state):
+        # Both boot and cron call this directly, without systemctl or Docker.
+        self.check_recovery_files(state)
+        updates = []
+        for logical in [state["list_path"], *self.state_shared_targets(state)]:
+            path = self.path(logical)
+            if logical in SHARED and not path.exists():
+                continue
+            snap = self.snapshot(path)
+            data = json.loads(self.original(snap)) if snap["exists"] else {}
+            if not isinstance(data, dict):
+                raise RuntimeError(f"插件配置格式无法识别：{logical}")
+            container = data if logical == state["list_path"] else data.setdefault("ports", {})
+            if not isinstance(container, dict):
+                raise RuntimeError(f"插件端口配置格式无法识别：{logical}")
+            expected = state["entry"] if logical == state["list_path"] else {f"u{state['uid']}": state["port"]}
+            if PLUGIN in container:
+                matches = same_entry(container[PLUGIN], expected) if logical == state["list_path"] else container[PLUGIN] == expected
+                if not matches:
+                    raise RuntimeError(f"插件注册项有冲突：{logical}")
+            else:
+                if logical == state["list_path"] and any(isinstance(entry, dict) and entry.get("info", {}).get("id") == 109 for entry in data.values()):
+                    raise RuntimeError("插件数字 ID 109 已被其他插件占用，停止恢复")
+                container[PLUGIN] = expected
+                updates.append((logical, snap, (json.dumps(data, ensure_ascii=False, indent=1) + "\n").encode()))
+        nginx_path = self.path(state["nginx_path"])
+        nginx_snap = self.snapshot(nginx_path)
+        if not nginx_snap["exists"]:
+            raise RuntimeError("NAS 的 plugincenter.conf 缺失，停止恢复；请先恢复 NAS 原生插件服务")
+        current = self.original(nginx_snap).decode()
+        start, end = markers(state["uid"])
+        missing_nginx = start not in current and end not in current
+        if not missing_nginx and current.count(state["nginx_block"]) != 1:
+            raise RuntimeError("插件 Nginx 配置有冲突，停止恢复")
         home = self.path(state["home"])
         if home.is_symlink():
             raise RuntimeError("插件目录被替换为符号链接")
@@ -631,6 +723,22 @@ WantedBy=multi-user.target
             if state["account"]:
                 for item in [home, *home.rglob("*")]:
                     os.chown(item, *state["account"])
+        else:
+            # Cleanup interrupted halfway can leave an empty/partial directory.
+            # Only fill missing packaged files; preserve existing local content.
+            payload = self.base / "payload"
+            for source in sorted(payload.rglob("*")):
+                target = home / source.relative_to(payload)
+                if target.is_symlink() or (target.exists() and target.is_dir() != source.is_dir()):
+                    raise RuntimeError(f"插件文件路径被占用，停止恢复：{target}")
+                if not target.exists():
+                    if source.is_dir():
+                        target.mkdir()
+                        os.chmod(target, stat.S_IMODE(source.stat().st_mode))
+                    else:
+                        shutil.copy2(source, target)
+                    if state["account"]:
+                        os.chown(target, *state["account"])
         link = self.path(state["owned"][1])
         link.parent.mkdir(parents=True, exist_ok=True)
         if not os.path.lexists(link):
@@ -638,39 +746,37 @@ WantedBy=multi-user.target
         elif not link.is_symlink() or os.readlink(link) != str(home / "src/ui"):
             raise RuntimeError("插件 www 路径被占用，停止恢复")
         icon = self.path(state["owned"][2])
+        if icon.is_symlink() or (icon.exists() and not icon.is_file()):
+            raise RuntimeError("插件图标路径被占用，停止恢复")
         if not icon.exists():
             icon.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(self.base / "payload/src/ui/icon.png", icon)
-        for logical in [state["list_path"], *self.state_shared_targets(state)]:
+        for logical, snap, content in updates:
             path = self.path(logical)
-            if logical in SHARED and not path.exists():
-                continue
-            if path.is_symlink():
-                raise RuntimeError(f"共享配置是符号链接：{logical}")
-            data = json.loads(path.read_bytes()) if path.exists() else {}
-            container = data if logical == state["list_path"] else data.setdefault("ports", {})
-            expected = state["entry"] if logical == state["list_path"] else {f"u{state['uid']}": state["port"]}
-            if PLUGIN in container and container[PLUGIN] != expected:
-                # Plugincenter may update status/timestamps: never overwrite another entry.
-                if logical == state["list_path"] and container[PLUGIN].get("info", {}).get("plugin") == PLUGIN:
-                    continue
-                raise RuntimeError(f"插件注册项有冲突：{logical}")
-            if PLUGIN not in container:
-                container[PLUGIN] = expected
-                atomic(path, (json.dumps(data, ensure_ascii=False, indent=1) + "\n").encode(), None if path.exists() else 0o644)
-        nginx_path = self.path(state["nginx_path"])
-        current = nginx_path.read_text()
-        start, end = markers(state["uid"])
-        if start not in current and end not in current:
-            atomic(nginx_path, state["nginx_block"].encode() + current.encode())
+            if self.snapshot(path) != snap:
+                raise RuntimeError(f"共享配置在恢复过程中发生变化，留待下次检查：{logical}")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic(path, content, None if path.exists() else 0o644)
+        if missing_nginx:
+            if self.snapshot(nginx_path) != nginx_snap:
+                raise RuntimeError("Nginx 配置在恢复过程中发生变化，留待下次检查")
+            installed = state["nginx_block"].encode() + current.encode()
+            atomic(nginx_path, installed)
             try:
                 self.system.nginx_test()
                 self.system.nginx_reload()
             except Exception:
-                atomic(nginx_path, current.encode())
+                if not nginx_path.is_symlink() and nginx_path.read_bytes() == installed:
+                    atomic(nginx_path, current.encode())
                 raise
-        elif current.count(state["nginx_block"]) != 1:
-            raise RuntimeError("插件 Nginx 配置有冲突，停止恢复")
+        # A firmware/market cleanup may also remove our scheduler or boot unit.
+        for logical, content in ((UNIT_PATH, state["unit"]), (CRON, state.get("cron"))):
+            if content is not None and not self.path(logical).exists():
+                self.path(logical).parent.mkdir(parents=True, exist_ok=True)
+                atomic(self.path(logical), content.encode(), 0o644)
+        if not os.path.lexists(self.path(UNIT_LINK)):
+            self.path(UNIT_LINK).parent.mkdir(parents=True, exist_ok=True)
+            os.symlink(f"../{UNIT}", self.path(UNIT_LINK))
 
     def status(self):
         if not self.manifest.exists():
@@ -680,10 +786,20 @@ WantedBy=multi-user.target
         for key in ("shared_targets", "shared_aliases"):
             if key in state:
                 result[key] = state[key]
+        result["auto_recovery"] = {
+            "interval_seconds": 120,
+            "enabled": state["status"] == "installed" and self.path(CRON).is_file() and self.path(CRON).read_text() == state.get("cron"),
+            "cron_file": CRON,
+        }
+        recovery = self.base / "recovery.json"
+        if recovery.is_file():
+            result["auto_recovery"]["last_check"] = json.loads(recovery.read_text())
         return result
 
 
 def main():
+    # NAS PTY/noninteractive sessions can omit administrative command paths.
+    os.environ["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + os.environ.get("PATH", "")
     parser = argparse.ArgumentParser(description="小米 NAS 录播观看插件：部署、检查与回滚")
     parser.add_argument("action", choices=["check", "install", "rollback", "undo", "restore", "status"])
     parser.add_argument("--uid", help="米家用户数字 UID，不带 u")
@@ -718,6 +834,11 @@ def main():
                 manager.restore()
             else:
                 print(json.dumps(manager.status(), ensure_ascii=False, indent=2))
+    except BlockingIOError:
+        if args.action == "restore":
+            return 0  # An install, rollback, or another restore owns the lock.
+        print("操作未完成：另一个部署或恢复任务正在运行，请稍后重试。", file=sys.stderr)
+        return 1
     except (Exception, KeyboardInterrupt) as error:
         print(f"操作未完成：{error}", file=sys.stderr)
         return 1

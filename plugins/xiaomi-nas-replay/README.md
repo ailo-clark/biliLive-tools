@@ -4,10 +4,10 @@
 
 ## 安装
 
-下载 GitHub Release 中的 `bililivereplay-0.1.0.zip`（不是 GitHub 自动生成的 Source code 压缩包），解压后在 NAS 的 root SSH 终端执行：
+下载 GitHub Release 中的 `bililivereplay-0.1.1.zip`（不是 GitHub 自动生成的 Source code 压缩包），解压后在 NAS 的 root SSH 终端执行：
 
 ```sh
-cd bililivereplay-0.1.0
+cd bililivereplay-0.1.1
 sh install.sh
 ```
 
@@ -25,9 +25,11 @@ sh install.sh --uid 12345 --upstream http://127.0.0.1:3000
 sh /data/bililive-nas-replay/runtime/rollback.sh
 ```
 
-首次安装后回滚会撤销本插件的注册、Nginx 配置、文件和恢复服务，恢复部署前状态。升级后回滚会恢复上一版插件；重复执行不会再卸载已恢复的旧版。完整卸载使用 `python3 /data/bililive-nas-replay/runtime/manage.py rollback`。
+首次安装后回滚会先停止本插件的定时恢复和开机入口，再撤销注册、Nginx 配置及页面文件，恢复部署前状态。升级后回滚会恢复上一版插件；重复执行不会再卸载已恢复的旧版。完整卸载使用 `python3 /data/bililive-nas-replay/runtime/manage.py rollback`。
 
-更多前提、备份路径、升级、重启恢复与故障处理见 [部署手册](部署手册.md)。
+安装后每两分钟检查一次，应用市场清理插件后从 `/data` 备份恢复。使用独立 `/etc/cron.d/bililivereplay` 文件，不修改 root crontab 或其他插件的任务。部署、恢复、回滚均不调用 `systemctl`，避免固件的交互会话死锁。
+
+更多前提、备份路径、升级、定时及重启恢复与故障处理见 [部署手册](部署手册.md)。
 
 ## 源码与构建
 

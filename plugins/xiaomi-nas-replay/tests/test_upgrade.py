@@ -7,6 +7,8 @@ from unittest.mock import patch
 import unittest
 import test_deploy as fixtures
 ROOT, SHARED = fixtures.ROOT, fixtures.SHARED
+VERSION = json.loads((ROOT / "INFO").read_text())["version"]
+NEXT_VERSION = "0.1.2"
 
 
 class Upgrade(unittest.TestCase):
@@ -18,7 +20,7 @@ class Upgrade(unittest.TestCase):
         release = self.root / "new-package"
         shutil.copytree(ROOT, release)
         info = json.loads((release / "INFO").read_text())
-        info["version"] = "0.1.1"
+        info["version"] = NEXT_VERSION
         (release / "INFO").write_text(json.dumps(info))
         manifest = release / "MANIFEST.json"
         manifest.unlink(missing_ok=True)
@@ -31,12 +33,14 @@ class Upgrade(unittest.TestCase):
         release = self.next_release()
         state = self.manager.deploy(self.uid, old["upstream"], release)
         home = self.manager.path(state["home"])
-        self.assertEqual(json.loads((home / "INFO").read_text())["version"], "0.1.1")
+        self.assertEqual(json.loads((home / "INFO").read_text())["version"], NEXT_VERSION)
         self.assertIn("updated release", (home / "src/ui/index.html").read_text())
         restored = self.manager.undo()
         self.assertEqual(restored["status"], "installed")
-        self.assertEqual(json.loads((home / "INFO").read_text())["version"], "0.1.0")
+        self.assertEqual(json.loads((home / "INFO").read_text())["version"], VERSION)
         self.assertEqual((home / "src/ui/index.html").read_bytes(), (ROOT / "src/ui/index.html").read_bytes())
+        self.assertTrue(self.manager.status()["auto_recovery"]["enabled"])
+        self.assertEqual((self.manager.base / "runtime/manage.py").read_bytes(), (ROOT / "deploy/manage.py").read_bytes())
         self.manager.undo()  # Repeating rollback must not uninstall the restored version.
         self.assertTrue(home.exists())
         for logical in ("/original-data/app.db", "/original-data/watch-history.db", "/original-video/live.mp4"):
@@ -57,7 +61,7 @@ class Upgrade(unittest.TestCase):
                 self.manager.deploy(self.uid, old["upstream"], release)
         current = self.manager.load()
         self.assertEqual(current["status"], "installed")
-        self.assertEqual(json.loads((self.manager.path(current["home"]) / "INFO").read_text())["version"], "0.1.0")
+        self.assertEqual(json.loads((self.manager.path(current["home"]) / "INFO").read_text())["version"], VERSION)
         self.manager.rollback()
         self.assert_original()
 
