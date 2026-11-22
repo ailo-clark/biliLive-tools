@@ -33,11 +33,7 @@
     "url",
     "parser"
   ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/renmu123/biliLive-tools",
-    "directory": "packages/StreamGet"
-  },
+  "repository": "https://github.com/renmu123/biliLive-tools",
   "author": "renmu123",
   "license": "MIT",
   "dependencies": {

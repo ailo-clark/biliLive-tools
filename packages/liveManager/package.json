@@ -1,6 +1,6 @@
 {
   "name": "@bililive-tools/manager",
-  "version": "1.18.0",
+  "version": "1.17.3",
   "description": "Batch scheduling recorders",
   "main": "./lib/index.js",
   "type": "module",
@@ -33,11 +33,7 @@
     "scheduling",
     "recorders"
   ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/renmu123/biliLive-tools",
-    "directory": "packages/liveManager"
-  },
+  "repository": "https://github.com/renmu123/biliLive-tools",
   "author": "renmu123",
   "license": "LGPL",
   "dependencies": {

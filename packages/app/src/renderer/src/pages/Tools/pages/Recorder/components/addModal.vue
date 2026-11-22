@@ -524,22 +524,6 @@
                 >全局</n-checkbox
               >
             </n-form-item>
-            <n-form-item v-if="config.cookie">
-              <template #label>
-                <Tip
-                  :text="textInfo.douyin.cookieMode.text"
-                  :tip="textInfo.douyin.cookieMode.tip"
-                ></Tip>
-              </template>
-              <n-select
-                v-model:value="config.cookieMode"
-                :options="douyinCookieModeOptions"
-                :disabled="globalFieldsObj.cookieMode"
-              />
-              <n-checkbox v-model:checked="globalFieldsObj.cookieMode" class="global-checkbox"
-                >全局</n-checkbox
-              >
-            </n-form-item>
             <n-form-item>
               <template #label>
                 <Tip text="双屏直播流" tip="开启后如果是双屏直播，那么就使用拼接的流"></Tip>
@@ -832,23 +816,6 @@
                 >全局</n-checkbox
               >
             </n-form-item>
-            <n-form-item v-if="!config.disableProvideCommentsWhenRecording">
-              <template #label>
-                <Tip
-                  text="弹幕统计入库"
-                  tip="录制结束后，将弹幕时间分布保存到数据库，供录制历史和主播详情展示"
-                ></Tip>
-              </template>
-              <n-switch
-                v-model:value="config.saveDanmaStats2DB"
-                :disabled="globalFieldsObj.saveDanmaStats2DB"
-              />
-              <n-checkbox
-                v-model:checked="globalFieldsObj.saveDanmaStats2DB"
-                class="global-checkbox"
-                >全局</n-checkbox
-              >
-            </n-form-item>
           </template>
         </template>
       </n-form>
@@ -882,7 +849,6 @@ import {
   recorderTypeOptions,
   recorderDebugLevelOptions,
   douyinApiTypeOptions,
-  douyinCookieModeOptions,
   huyaApiTypeOptions,
   douyuStreamCodecOptions,
   douyuApiTypeOptions,
@@ -919,7 +885,6 @@ const globalFieldsObj = ref<Record<NonNullable<Recorder["noGlobalFollowFields"]>
     disableProvideCommentsWhenRecording: true,
     saveGiftDanma: true,
     saveSCDanma: true,
-    saveDanmaStats2DB: true,
     segment: true,
     uid: true,
     saveCover: true,
@@ -934,7 +899,6 @@ const globalFieldsObj = ref<Record<NonNullable<Recorder["noGlobalFollowFields"]>
     videoFormat: true,
     recorderType: true,
     cookie: true,
-    cookieMode: true,
     proxy: true,
     doubleScreen: true,
     useServerTimestamp: true,
@@ -1003,7 +967,6 @@ const cancel = () => {
 const getRecordSetting = async () => {
   if (!props.id) return;
   config.value = await recoderApi.get(props.id);
-  config.value.cookieMode ??= "all";
   if (!config.value.handleTime) {
     config.value.handleTime = [null, null];
   }
@@ -1049,7 +1012,6 @@ const initGlobalFields = () => {
     ),
     saveGiftDanma: !(config.value?.noGlobalFollowFields ?? []).includes("saveGiftDanma"),
     saveSCDanma: !(config.value?.noGlobalFollowFields ?? []).includes("saveSCDanma"),
-    saveDanmaStats2DB: !(config.value?.noGlobalFollowFields ?? []).includes("saveDanmaStats2DB"),
     segment: !(config.value?.noGlobalFollowFields ?? []).includes("segment"),
     uid: !(config.value?.noGlobalFollowFields ?? []).includes("uid"),
     saveCover: !(config.value?.noGlobalFollowFields ?? []).includes("saveCover"),
@@ -1066,7 +1028,6 @@ const initGlobalFields = () => {
     videoFormat: !(config.value?.noGlobalFollowFields ?? []).includes("videoFormat"),
     recorderType: !(config.value?.noGlobalFollowFields ?? []).includes("recorderType"),
     cookie: !(config.value?.noGlobalFollowFields ?? []).includes("cookie"),
-    cookieMode: !(config.value?.noGlobalFollowFields ?? []).includes("cookieMode"),
     proxy: !(config.value?.noGlobalFollowFields ?? []).includes("proxy"),
     doubleScreen: !(config.value?.noGlobalFollowFields ?? []).includes("doubleScreen"),
     useServerTimestamp: !(config.value?.noGlobalFollowFields ?? []).includes("useServerTimestamp"),
@@ -1128,9 +1089,6 @@ watch(
     if (val.saveSCDanma) {
       config.value.saveSCDanma = appConfig.value.recorder.saveSCDanma;
     }
-    if (val.saveDanmaStats2DB) {
-      config.value.saveDanmaStats2DB = appConfig.value.recorder.saveDanmaStats2DB;
-    }
     if (val.segment) {
       config.value.segment = appConfig.value.recorder.segment;
     }
@@ -1186,9 +1144,6 @@ watch(
       } else if (config.value.providerId === "TikTok") {
         config.value.cookie = appConfig.value.recorder.tiktok.cookie;
       }
-    }
-    if (val.cookieMode && config.value.providerId === "DouYin") {
-      config.value.cookieMode = appConfig.value.recorder.douyin.cookieMode ?? "all";
     }
     if (val.proxy && config.value.providerId === "TikTok") {
       config.value.proxy = appConfig.value.recorder.tiktok.proxy;

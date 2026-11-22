@@ -5,15 +5,7 @@
         <n-card class="hero-card" :bordered="false">
           <div class="hero-main">
             <div class="profile-block">
-              <img
-                v-if="isRecording && cover"
-                class="profile-cover"
-                :src="cover"
-                alt="直播封面"
-                referrerpolicy="no-referrer"
-              />
               <n-avatar
-                v-else
                 round
                 :size="80"
                 class="profile-avatar"
@@ -25,17 +17,7 @@
               <div class="profile-content">
                 <div class="profile-heading">
                   <div>
-                    <div class="profile-name">
-                      <n-avatar
-                        v-if="isRecording && avatar"
-                        round
-                        :size="32"
-                        class="profile-avatar-small"
-                        :src="avatar"
-                        referrerpolicy="no-referrer"
-                      />
-                      <h1>{{ displayName }}</h1>
-                    </div>
+                    <h1>{{ displayName }}</h1>
                     <div class="profile-meta">
                       <span>{{ platformLabel }}</span>
                       <span class="room-meta">
@@ -75,6 +57,7 @@
                     <n-tag v-if="monitorLabel" :type="monitorTagType" round>{{
                       monitorLabel
                     }}</n-tag>
+                    <n-tag v-if="stateLabel" :type="stateTagType" round>{{ stateLabel }}</n-tag>
                   </div>
                 </div>
               </div>
@@ -84,60 +67,10 @@
               <n-button type="primary" :loading="recordActionLoading" @click="toggleRecording">
                 {{ isRecording ? "停止录制" : "开始录制" }}
               </n-button>
-              <n-button type="warning" @click="goToHistory()">录制历史</n-button>
+              <n-button type="warning" @click="goToHistory">录制历史</n-button>
               <n-button v-if="result.streamer" @click="goToCalendar">录播日历</n-button>
               <n-button @click="openRecorderSetting">直播间设置</n-button>
-              <n-button :loading="loading" @click="handleQuery">刷新</n-button>
               <n-button @click="goBack">返回</n-button>
-            </div>
-          </div>
-        </n-card>
-
-        <n-card v-if="isRecording" class="recording-card" :bordered="false">
-          <div class="recording-card-header">
-            <div class="recording-card-title">
-              <span class="recording-indicator"></span>
-              <h2>当前录制</h2>
-            </div>
-            <div class="recording-actions">
-              <n-button size="small" @click="watchLive">观看直播</n-button>
-              <n-button
-                v-if="result.recorderInfo?.recordHandle?.recorderType === 'bililive'"
-                size="small"
-                @click="cutRecording"
-              >
-                切割
-              </n-button>
-              <n-button
-                size="small"
-                @click="openRecordingFolder()"
-                @mousedown.middle.prevent
-                @auxclick.middle.prevent="openRecordingFolder(true)"
-              >
-                打开文件夹
-              </n-button>
-            </div>
-          </div>
-          <div class="recording-info-grid">
-            <div class="recording-info-item">
-              <span>录制时间</span>
-              <strong>{{ result.recorderInfo?.recordHandle?.progress?.time || "--" }}</strong>
-            </div>
-            <div class="recording-info-item">
-              <span>直播开始时间</span>
-              <strong>{{ formatStartTime(result.recorderInfo?.liveInfo?.liveStartTime) }}</strong>
-            </div>
-            <div class="recording-info-item">
-              <span>录制开始时间</span>
-              <strong>{{ formatStartTime(result.recorderInfo?.liveInfo?.recordStartTime) }}</strong>
-            </div>
-            <div class="recording-info-item">
-              <span>线路</span>
-              <strong>{{ result.recorderInfo?.usedSource || "--" }}</strong>
-            </div>
-            <div class="recording-info-item">
-              <span>画质</span>
-              <strong>{{ result.recorderInfo?.usedStream || "--" }}</strong>
             </div>
           </div>
         </n-card>
@@ -179,14 +112,6 @@
               </div>
 
               <n-empty v-else description="暂无数据" />
-            </n-tab-pane>
-            <n-tab-pane name="calendar" tab="录制日历">
-              <RecordCalendar
-                v-if="activeTab === 'calendar'"
-                :recorder-id="streamerInfo.recorderId"
-                :refresh-key="calendarRefreshKey"
-                @select-date="goToHistory"
-              />
             </n-tab-pane>
 
             <n-tab-pane name="clips" tab="最近录制片段">
@@ -236,43 +161,36 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <template v-for="(session, index) in result.data" :key="session.sessionKey">
-                        <tr :class="{ 'watch-completed': session.watch?.completed }">
-                          <td class="title-cell">
-                            <div class="session-name">{{ session.title || "-" }}</div>
-                          </td>
-                          <td>{{ formatTime(session.liveStartTime) }}</td>
-                          <td>{{ formatTime(session.recordStartTime) }}</td>
-                          <td>{{ formatTime(session.lastRecordTime) }}</td>
-                          <td>{{ formatDuration(session.totalDuration, "00:00:00") }}</td>
-                          <td
+                      <tr
+                        v-for="(session, index) in result.data"
+                        :key="session.sessionKey"
+                        :class="{ 'watch-completed': session.watch?.completed }"
+                      >
+                        <td class="title-cell">
+                          <div class="session-name">{{ session.title || "-" }}</div>
+                        </td>
+                        <td>{{ formatTime(session.recordStartTime) }}</td>
+                        <td>{{ formatTime(session.liveStartTime) }}</td>
+                        <td>{{ formatTime(session.lastRecordTime) }}</td>
+                        <td>{{ formatDuration(session.totalDuration, "00:00:00") }}</td>
+                        <td>{{ session.clipCount }}</td>
+                        <td class="watch-state-cell">{{ sessionWatchLabel(session.watch) }}</td>
+                        <td>{{ formatNumber(session.totalDanmaNum) }}</td>
+                        <td>
+                          <n-tag size="small" round :type="resolveSessionStatus(index).type">
+                            {{ resolveSessionStatus(index).label }}
+                          </n-tag>
+                        </td>
+                        <td class="operation-cell">
+                          <n-button
+                            text
+                            type="primary"
                             @click="showSessionDetailPlaceholder(session)"
-                            style="cursor: pointer"
                           >
-                            {{ session.clipCount }}
-                          </td>
-                          <td class="watch-state-cell">{{ sessionWatchLabel(session.watch) }}</td>
-                          <td>{{ formatNumber(session.totalDanmaNum) }}</td>
-                          <td>
-                            <n-tag size="small" round :type="resolveSessionStatus(index).type">
-                              {{ resolveSessionStatus(index).label }}
-                            </n-tag>
-                          </td>
-                          <td class="operation-cell">
-                            <n-button text type="primary" @click="toggleSessionDetail(session)">
-                              {{ expandedSessionKey === session.sessionKey ? "收起" : "详情" }}
-                            </n-button>
-                          </td>
-                        </tr>
-                        <tr v-if="expandedSessionKey === session.sessionKey" class="detail-row">
-                          <td colspan="10">
-                            <SessionDanmaStats
-                              :session="session"
-                              @toHistory="showSessionDetailPlaceholder"
-                            />
-                          </td>
-                        </tr>
-                      </template>
+                            详情
+                          </n-button>
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -315,10 +233,7 @@ import { formatRecentRecordTime, formatTime, formatDuration } from "@renderer/ut
 import { useRoute, useRouter } from "vue-router";
 import Artplayer from "@renderer/components/Artplayer/Index.vue";
 import AddRecorderModal from "@renderer/pages/Tools/pages/Recorder/components/addModal.vue";
-import SessionDanmaStats from "./components/SessionDanmaStats.vue";
-import RecordCalendar from "./components/RecordCalendar.vue";
 import { useTitle } from "@vueuse/core";
-import { openRecorderFolder, toLiveVideoPlayerPage } from "@renderer/utils/pages";
 import type { RecorderAPI } from "@biliLive-tools/http/types/recorder.js";
 import { sessionWatchLabel } from "@renderer/apis/watchHistory";
 import type { RecentRecordClipItem } from "@renderer/apis/recordHistory";
@@ -350,9 +265,7 @@ const recordActionLoading = ref(false);
 const recentClipLoading = ref(false);
 const recorderSettingVisible = ref(false);
 const activeTab = ref("timeline");
-const calendarRefreshKey = ref(0);
 const recentClips = ref<RecentRecordClipItem[]>([]);
-const expandedSessionKey = ref<string | null>(null);
 const result = reactive<RecorderAPI["queryStreamerDetail"]["Resp"]>({
   recorderInfo: null,
   streamer: null,
@@ -377,7 +290,7 @@ watch(
   () => displayName.value,
   (newName) => {
     if (newName) {
-      pageTitle.value = `${newName}的录制详情`;
+      pageTitle.value = `${newName} 录制详情`;
     }
   },
   { immediate: true },
@@ -385,7 +298,6 @@ watch(
 const avatar = computed(
   () => result.recorderInfo?.liveInfo?.avatar || result.recorderInfo?.extra?.avatar,
 );
-const cover = computed(() => result.recorderInfo?.liveInfo?.cover);
 const platformLabel = computed(
   () => result.recorderInfo?.providerId || result.streamer?.platform || "-",
 );
@@ -398,6 +310,8 @@ const monitorTagType = computed(() =>
   result.recorderInfo?.disableAutoCheck ? "warning" : "success",
 );
 const isRecording = computed(() => result.recorderInfo?.state === "recording");
+const stateLabel = computed(() => (isRecording.value ? "录制中" : ""));
+const stateTagType = computed(() => (isRecording.value ? "error" : "default"));
 const channelURL = computed(() => result.recorderInfo?.channelURL || "");
 const recorderTimeline = computed(() => [...(result.recorderInfo?.timeline || [])].reverse());
 
@@ -469,7 +383,6 @@ const handleQuery = async () => {
     const payload = await recoderApi.queryStreamerDetail(queryParams);
     applyResult(payload);
     await queryRecentClips();
-    calendarRefreshKey.value++;
   } catch (error: any) {
     notice.error({
       title: error?.message || "查询主播详情失败",
@@ -542,7 +455,7 @@ const goToCalendar = () => {
     });
 };
 
-const goToHistory = async (date?: string) => {
+const goToHistory = () => {
   if (!result.recorderInfo?.channelId || !result.recorderInfo?.providerId) {
     notice.warning({
       title: "当前缺少房间号或平台信息，无法跳转历史记录",
@@ -550,29 +463,15 @@ const goToHistory = async (date?: string) => {
     return;
   }
 
-  const query = {
-    id: streamerInfo.recorderId,
-    channelId: result.recorderInfo.channelId,
-    platform: result.recorderInfo.providerId,
-    name: result.streamer?.name || streamerInfo.name,
-    ...(date ? { date } : {}),
-  };
-
-  if (date && !window.isWeb) {
-    try {
-      await window.api.common.createSubWindow({
-        routeName: "liveHistory",
-        hideAside: true,
-        hideMenuBar: true,
-        query: { ...query, calendarWindow: "1" },
-      });
-    } catch (error: any) {
-      notice.error({ title: error?.message || "打开录制历史窗口失败" });
-    }
-    return;
-  }
-
-  router.push({ path: "/liveHistory", query });
+  router.push({
+    path: "/liveHistory",
+    query: {
+      id: streamerInfo.recorderId,
+      channelId: result.recorderInfo.channelId,
+      platform: result.recorderInfo.providerId,
+      name: result.streamer?.name || streamerInfo.name,
+    },
+  });
 };
 
 const toggleRecording = async () => {
@@ -587,6 +486,9 @@ const toggleRecording = async () => {
       });
     } else {
       await recoderApi.startRecord(queryParams.recorderId);
+      notice.success({
+        title: "已开始录制",
+      });
     }
     setTimeout(() => {
       handleQuery();
@@ -597,38 +499,6 @@ const toggleRecording = async () => {
     });
   } finally {
     recordActionLoading.value = false;
-  }
-};
-
-const watchLive = async () => {
-  try {
-    await toLiveVideoPlayerPage({
-      liveId: streamerInfo.recorderId,
-      owner: displayName.value,
-    });
-  } catch (error: any) {
-    notice.error({ title: error?.message || "无法观看直播" });
-  }
-};
-
-const cutRecording = async () => {
-  try {
-    await recoderApi.cut(streamerInfo.recorderId);
-    notice.success({ title: "已切割录制" });
-  } catch (error: any) {
-    notice.error({ title: error?.message || "切割失败" });
-  }
-};
-
-const openRecordingFolder = async (newTab = false) => {
-  try {
-    await openRecorderFolder(
-      streamerInfo.recorderId,
-      result.recorderInfo?.recordHandle?.savePath,
-      newTab,
-    );
-  } catch (error: any) {
-    notice.error({ title: error?.message || "打开录播文件夹失败" });
   }
 };
 
@@ -644,13 +514,6 @@ const resolveSessionStatus = (index: number) => {
     label: "已完成",
     type: "success" as const,
   };
-};
-
-const toggleSessionDetail = (
-  session: RecorderAPI["queryStreamerDetail"]["Resp"]["data"][number],
-) => {
-  expandedSessionKey.value =
-    expandedSessionKey.value === session.sessionKey ? null : session.sessionKey;
 };
 
 const showSessionDetailPlaceholder = (
@@ -699,53 +562,18 @@ const formatFileSize = (fileSize?: number) => {
   return `${mb.toFixed(1)} MB`;
 };
 
-const formatStartTime = (value?: Date | string) => {
-  if (!value) return "--";
-  const timestamp = Date.parse(String(value));
-  return Number.isFinite(timestamp) && timestamp > 0 ? formatTime(timestamp) : "--";
-};
-
-let recorderInfoInterval: ReturnType<typeof setInterval> | null = null;
-let recorderInfoLoading = false;
-
-const refreshRecorderInfo = async () => {
-  if (recorderInfoLoading || document.visibilityState === "hidden") return;
-  recorderInfoLoading = true;
-  try {
-    result.recorderInfo = await recoderApi.getRecorderInfo(streamerInfo.recorderId);
-  } catch {
-    // 手动刷新会展示请求错误，轮询期间保留最后一次成功的状态。
-  } finally {
-    recorderInfoLoading = false;
-  }
-};
-
-const startRecorderInfoInterval = () => {
-  if (recorderInfoInterval || !streamerInfo.recorderId) return;
-  recorderInfoInterval = setInterval(refreshRecorderInfo, 3000);
-};
-
-const stopRecorderInfoInterval = () => {
-  if (recorderInfoInterval) clearInterval(recorderInfoInterval);
-  recorderInfoInterval = null;
-};
-
-const refreshWatch = () => {
-  if (!loading.value) void handleQuery();
-};
 onMounted(() => {
   handleQuery();
-  startRecorderInfoInterval();
   window.addEventListener("focus", refreshWatch);
   window.addEventListener("watch-history-updated", refreshWatch);
 });
+const refreshWatch = () => {
+  if (!loading.value) void handleQuery();
+};
 onBeforeUnmount(() => {
   window.removeEventListener("focus", refreshWatch);
   window.removeEventListener("watch-history-updated", refreshWatch);
 });
-onActivated(startRecorderInfoInterval);
-onDeactivated(stopRecorderInfoInterval);
-onUnmounted(stopRecorderInfoInterval);
 </script>
 
 <style scoped lang="less">
@@ -772,7 +600,6 @@ onUnmounted(stopRecorderInfoInterval);
 }
 
 .hero-card,
-.recording-card,
 .stat-card,
 .tab-panel {
   border-radius: 24px;
@@ -790,62 +617,6 @@ onUnmounted(stopRecorderInfoInterval);
 
   [data-theme="dark"] & {
     background: linear-gradient(135deg, rgba(36, 40, 48, 0.98), rgba(25, 29, 36, 0.96));
-  }
-}
-
-.recording-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.recording-card-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  h2 {
-    margin: 0;
-    font-size: 18px;
-  }
-}
-
-.recording-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #ff4d4f;
-  box-shadow: 0 0 0 4px rgba(255, 77, 79, 0.12);
-}
-
-.recording-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.recording-info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-}
-
-.recording-info-item {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-
-  span {
-    color: #7b8699;
-    font-size: 13px;
-  }
-
-  strong {
-    font-size: 18px;
-    overflow-wrap: anywhere;
   }
 }
 
@@ -871,25 +642,6 @@ onUnmounted(stopRecorderInfoInterval);
   font-weight: 700;
 }
 
-.profile-cover {
-  width: 140px;
-  height: 80px;
-  flex-shrink: 0;
-  border-radius: 12px;
-  object-fit: cover;
-}
-
-.profile-name {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.profile-avatar-small {
-  flex-shrink: 0;
-}
-
 .profile-content {
   min-width: 0;
   display: grid;
@@ -905,10 +657,8 @@ onUnmounted(stopRecorderInfoInterval);
 
   h1 {
     margin: 0;
-    min-width: 0;
     font-size: 34px;
     line-height: 1.18;
-    overflow-wrap: anywhere;
   }
 }
 
@@ -1174,10 +924,6 @@ onUnmounted(stopRecorderInfoInterval);
   tbody tr:last-child td {
     border-bottom: none;
   }
-
-  .detail-row td {
-    padding: 0 14px 16px;
-  }
 }
 
 .session-name {
@@ -1217,7 +963,6 @@ onUnmounted(stopRecorderInfoInterval);
   }
 
   .hero-card,
-  .recording-card,
   .stat-card,
   .tab-panel {
     border-radius: 16px;
@@ -1240,12 +985,6 @@ onUnmounted(stopRecorderInfoInterval);
     width: 56px !important;
     height: 56px !important;
     font-size: 24px;
-  }
-
-  .profile-cover {
-    width: 96px;
-    height: 56px;
-    border-radius: 8px;
   }
 
   .profile-content {
@@ -1285,11 +1024,6 @@ onUnmounted(stopRecorderInfoInterval);
   .stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
-  }
-
-  .recording-info-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
   }
 
   .stat-card:last-child {

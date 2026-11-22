@@ -63,7 +63,6 @@ export function upadteLive(
     video_filename?: string;
     danma_num?: number;
     interact_num?: number;
-    danma_stats_json?: string;
     quick_hash?: string;
   },
 ) {

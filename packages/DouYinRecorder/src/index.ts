@@ -39,7 +39,6 @@ function createRecorder(opts: RecorderCreateOpts): Recorder {
     availableSources: [],
     qualityRetry: opts.qualityRetry ?? 0,
     useServerTimestamp: opts.useServerTimestamp ?? true,
-    cookieMode: opts.cookieMode ?? "all",
     state: "idle",
     cache: null as any,
     appendTimeline: null as any,
@@ -56,7 +55,7 @@ function createRecorder(opts: RecorderCreateOpts): Recorder {
     async getLiveInfo() {
       const channelId = this.channelId;
       const info = await getInfo(channelId, {
-        auth: this.cookieMode === "danma" ? undefined : this.auth,
+        auth: this.auth,
         uid: this.uid,
       });
       return {
@@ -71,7 +70,7 @@ function createRecorder(opts: RecorderCreateOpts): Recorder {
         streamPriorities: this.streamPriorities,
         sourcePriorities: this.sourcePriorities,
         strictQuality: false,
-        auth: this.cookieMode === "danma" ? undefined : this.auth,
+        auth: this.auth,
         formatPriorities: this.formatPriorities,
         doubleScreen: this.doubleScreen,
         api: this.api as APIType,
@@ -112,7 +111,7 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
       isManualStart,
       (channelId) =>
         getInfo(channelId, {
-          auth: this.cookieMode === "danma" ? undefined : this.auth,
+          auth: this.auth,
           api: this.api as APIType,
           uid: this.uid,
         }),
@@ -129,7 +128,7 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
   let isLiveRadio = false;
   try {
     const liveInfo = await getInfo(this.channelId, {
-      auth: this.cookieMode === "danma" ? undefined : this.auth,
+      auth: this.auth,
       api: this.api as APIType,
       uid: this.uid,
     });
@@ -170,7 +169,7 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
       streamPriorities: this.streamPriorities,
       sourcePriorities: this.sourcePriorities,
       strictQuality: strictQuality,
-      auth: this.cookieMode === "danma" ? undefined : this.auth,
+      auth: this.auth,
       formatPriorities: this.formatPriorities,
       doubleScreen: this.doubleScreen,
       api: this.api as APIType,
@@ -248,7 +247,7 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
     onEnd,
     async () => {
       const info = await getInfo(this.channelId, {
-        auth: this.cookieMode === "danma" ? undefined : this.auth,
+        auth: this.auth,
       });
       return info;
     },
@@ -300,9 +299,8 @@ const checkLiveStatusAndRecord: Recorder["checkLiveStatusAndRecord"] = async fun
   const GIFT_DELAY = 5000;
 
   const client = new DouYinDanmaClient(this?.liveInfo?.liveId as string, {
-    cookie: this.cookieMode === "stream" ? undefined : this.auth,
+    cookie: this.auth,
   });
-  console.log("DouYinDanmaClient", this?.liveInfo?.liveId, this.cookieMode, this.auth);
   client.on("chat", (msg) => {
     const extraDataController = downloader.getExtraDataController();
     if (!extraDataController) return;

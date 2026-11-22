@@ -25,10 +25,6 @@ export interface StreamerDetailClip {
   video_duration?: number;
   danma_num?: number;
   interact_num?: number;
-  danmaTimeline?: {
-    interval: number;
-    data: number[];
-  };
   quick_hash?: string;
   watch?: WatchState | null;
 }
@@ -83,39 +79,6 @@ const getRecordDuration = (record: LiveHistory) => {
 
 const toSessionKey = recordSessionKey;
 
-const parseDanmaTimeline = (value?: string): StreamerDetailClip["danmaTimeline"] | undefined => {
-  if (!value) return undefined;
-
-  try {
-    const parsed = JSON.parse(value) as {
-      danmaTimeline?: {
-        interval?: unknown;
-        data?: unknown;
-      };
-    };
-    const interval = parsed.danmaTimeline?.interval;
-    const data = parsed.danmaTimeline?.data;
-
-    if (
-      typeof interval !== "number" ||
-      !Number.isFinite(interval) ||
-      interval <= 0 ||
-      !Array.isArray(data)
-    ) {
-      return undefined;
-    }
-
-    return {
-      interval,
-      data: data.map((item) =>
-        typeof item === "number" && Number.isFinite(item) && item >= 0 ? Math.round(item) : 0,
-      ),
-    };
-  } catch {
-    return undefined;
-  }
-};
-
 const toSessionCard = (records: LiveHistory[]): StreamerDetailSessionCard => {
   const sortedRecords = [...records].sort(
     (left, right) => right.record_start_time - left.record_start_time,
@@ -155,7 +118,6 @@ const toSessionCard = (records: LiveHistory[]): StreamerDetailSessionCard => {
       video_duration: item.video_duration,
       danma_num: item.danma_num,
       interact_num: item.interact_num,
-      danmaTimeline: parseDanmaTimeline(item.danma_stats_json),
       quick_hash: item.quick_hash,
     })),
   };
@@ -233,15 +195,6 @@ export function queryStreamerDetail(args: StreamerDetailQueryArgs): StreamerDeta
   };
 }
 
-export function queryRecordStartTimes(
-  args: Pick<StreamerDetailQueryArgs, "room_id" | "platform" | "startTime" | "endTime">,
-): number[] {
-  const streamer = streamerService.query({ room_id: args.room_id, platform: args.platform });
-  if (!streamer || args.startTime === undefined || args.endTime === undefined) return [];
-  return recordHistoryService.getRecordStartTimes(streamer.id, args.startTime, args.endTime);
-}
-
 export default {
   queryStreamerDetail,
-  queryRecordStartTimes,
 };

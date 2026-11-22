@@ -48,7 +48,7 @@ router.get("/login/poll", async (ctx) => {
   if (result.status === "completed") {
     writeDouyuUser(result.user);
     sessions.delete(id);
-    ctx.body = { status: "completed", uid: result.user.uid };
+    ctx.body = { status: "completed" };
     return;
   }
   if (result.status === "error") sessions.delete(id);

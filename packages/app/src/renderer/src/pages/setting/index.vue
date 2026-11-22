@@ -398,7 +398,7 @@
           <BiliSetting v-model:data="config"></BiliSetting>
         </n-tab-pane>
         <n-tab-pane name="recorder" tab="直播录制">
-          <RecordSetting v-model:data="config" @login="handleRecorderLogin"></RecordSetting>
+          <RecordSetting v-model:data="config"></RecordSetting>
         </n-tab-pane>
         <n-tab-pane name="virtualRecord" tab="虚拟录制">
           <VirtualRecordSetting v-model:data="config"></VirtualRecordSetting>
@@ -458,7 +458,6 @@ defineOptions({
   name: "Setting",
 });
 import { useFileDialog } from "@vueuse/core";
-import { useRouter } from "vue-router";
 
 import RoomSettingDialog from "./RoomSettingDialog.vue";
 import CommonSetting from "./CommonWebhookSetting.vue";
@@ -488,7 +487,6 @@ import { useBreakpoints } from "@renderer/hooks/useBreakpoints";
 import type { AppConfig, BiliupPreset, AppRoomConfig } from "@biliLive-tools/types";
 
 const notice = useNotification();
-const router = useRouter();
 const appConfigStore = useAppConfig();
 const showModal = defineModel<boolean>({ required: true, default: false });
 const isWeb = computed(() => window.isWeb);
@@ -527,7 +525,7 @@ const logLevelOptions = ref<{ label: string; value: any }[]>([
 
 const confirm = useConfirm();
 const { setTheme } = useThemeStore();
-const saveConfig = async (): Promise<boolean> => {
+const saveConfig = async () => {
   if (
     !isWeb.value &&
     initConfig.value.webhook.recoderFolder &&
@@ -540,7 +538,7 @@ const saveConfig = async (): Promise<boolean> => {
       const [status] = await confirm.warning({
         content: "录播姬目录下应该有一个名为config.json的文件，请确认选择的目录是否正确？",
       });
-      if (!status) return false;
+      if (!status) return;
     }
   }
   // passKey 为空时不保存
@@ -549,7 +547,7 @@ const saveConfig = async (): Promise<boolean> => {
       title: "鉴权密钥不能为空",
       duration: 1000,
     });
-    return false;
+    return;
   }
 
   await configApi.save(deepRaw(config.value));
@@ -558,30 +556,6 @@ const saveConfig = async (): Promise<boolean> => {
   window?.api?.common?.setOpenAtLogin(config.value.autoLaunch || false);
   close();
   appConfigStore.getAppConfig();
-  return true;
-};
-
-const handleRecorderLogin = async (platform: "bilibili" | "douyu") => {
-  const platformName = platform === "bilibili" ? "B站" : "斗鱼";
-  const [status] = await confirm.warning({
-    title: `前往${platformName}登录`,
-    content: `即将保存当前设置并跳转到用户页的${platformName}页面。是否继续？`,
-    positiveText: "保存并跳转",
-    negativeText: "取消",
-  });
-  if (!status) return;
-
-  try {
-    if (!(await saveConfig())) return;
-  } catch (error) {
-    notice.error({
-      title: "保存设置失败",
-      content: error instanceof Error ? error.message : String(error),
-      duration: 3000,
-    });
-    return;
-  }
-  await router.push({ name: "User", query: { tab: platform } });
 };
 
 const close = () => {

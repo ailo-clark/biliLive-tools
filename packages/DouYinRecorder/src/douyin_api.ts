@@ -405,7 +405,7 @@ async function getRoomInfoByWeb(
   }
   assert(
     res.data.status_code === 0,
-    `Unexpected resp, code ${res.data.status_code}, msg ${JSON.stringify(res.data.data)}, id ${webRoomId}, cookies: ${cookies.slice(0, 30)}`,
+    `Unexpected resp, code ${res.data.status_code}, msg ${JSON.stringify(res.data.data)}, id ${webRoomId}, cookies: ${cookies}`,
   );
 
   const data = res.data.data;

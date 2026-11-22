@@ -34,11 +34,7 @@
     "录制",
     "虎牙"
   ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/renmu123/biliLive-tools",
-    "directory": "packages/HuYaRecorder"
-  },
+  "repository": "https://github.com/renmu123/biliLive-tools/tree/master/packages/HuYaRecorder",
   "author": "renmu123",
   "license": "LGPL",
   "dependencies": {

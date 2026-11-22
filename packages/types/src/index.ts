@@ -60,7 +60,6 @@ export const recorderNoGlobalFollowFields: Array<
   "disableProvideCommentsWhenRecording",
   "saveGiftDanma",
   "saveSCDanma",
-  "saveDanmaStats2DB",
   "segment",
   "uid",
   "saveCover",
@@ -75,7 +74,6 @@ export const recorderNoGlobalFollowFields: Array<
   "videoFormat",
   "recorderType",
   "cookie",
-  "cookieMode",
   "proxy",
   "doubleScreen",
   "useServerTimestamp",
@@ -429,8 +427,6 @@ interface DouyinRecorderConfig extends RecorderCheckConfig {
   quality: "origin" | "uhd" | "hd" | "sd" | "ld" | "ao" | "real_origin";
   /** 抖音cookie */
   cookie: string;
-  /** Cookie 使用范围，默认为全部 */
-  cookieMode: "all" | "stream" | "danma";
   /** 流格式 */
   formatName: FormatName;
   /** 是否使用双屏直播流 */
@@ -500,8 +496,6 @@ export interface GlobalRecorder {
   recorderType: "auto" | "ffmpeg" | "mesio" | "bililive";
   /** 保存弹幕测试 */
   saveDanma2DB: boolean;
-  /** 将弹幕统计保存到数据库 */
-  saveDanmaStats2DB: boolean;
   /** B站特有的配置 */
   bilibili: BilibiliRecorderConfig;
   /** 斗鱼特有的配置 */
@@ -565,8 +559,6 @@ export interface Recorder {
   convert2Mp4?: boolean;
   /** 视频格式 */
   videoFormat: GlobalRecorder["videoFormat"];
-  /** 将弹幕统计保存到数据库 */
-  saveDanmaStats2DB?: GlobalRecorder["saveDanmaStats2DB"];
   /** 录制器类型 */
   recorderType: GlobalRecorder["recorderType"];
   qualityRetry: GlobalRecorder["qualityRetry"];
@@ -591,8 +583,6 @@ export interface Recorder {
   weight: number;
   /** 平台 Cookie */
   cookie?: string;
-  /** 抖音 Cookie 使用范围 */
-  cookieMode?: DouyinRecorderConfig["cookieMode"];
   /** 请求和录制使用的代理 */
   proxy?: string;
   /** 是否使用双屏直播流 */
@@ -617,14 +607,7 @@ export interface Recorder {
   noGlobalFollowFields: typeof recorderNoGlobalFollowFields;
 }
 
-export type SyncType = "baiduPCS" | "aliyunpan" | "alist" | "pan123" | "quark" | "copy";
-export interface QuarkAuth {
-  accessToken: string;
-  refreshToken: string;
-  deviceId: string;
-  userId: string;
-  clientDeviceId: string;
-}
+export type SyncType = "baiduPCS" | "aliyunpan" | "alist" | "pan123" | "copy";
 
 export type AliyunPanDriveType = "backup" | "resource";
 
@@ -770,11 +753,6 @@ export interface AppConfig {
       clientId: string;
       clientSecret: string;
       limitRate: number; // KB
-    };
-    quark: {
-      auth: QuarkAuth;
-      concurrency: number;
-      limitRate: number; // KB/s, per upload task
     };
     syncConfigs: SyncConfig[];
   };

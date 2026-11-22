@@ -33,11 +33,7 @@
     "直播",
     "录制"
   ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/renmu123/biliLive-tools",
-    "directory": "packages/TikTokRecorder"
-  },
+  "repository": "https://github.com/renmu123/biliLive-tools/tree/master/packages/TikTokRecorder",
   "author": "renmu123",
   "license": "LGPL",
   "dependencies": {
