@@ -59,6 +59,7 @@ import WatchToggleButton from "@renderer/components/WatchToggleButton.vue";
 import { useConfirm } from "@renderer/hooks";
 import { useNotice } from "@renderer/hooks/useNotice";
 import { toVideoPlayerPage } from "@renderer/utils/pages";
+import { useRoute } from "vue-router";
 
 import type { DataTableColumns, DataTableRowKey } from "naive-ui";
 import type { FileBrowserItem } from "@renderer/apis/fileBrowser";
@@ -73,6 +74,7 @@ interface BreadcrumbItem {
 }
 
 const loading = ref(false);
+const route = useRoute();
 const deleting = ref(false);
 const items = ref<FileBrowserItem[]>([]);
 const checkedRowKeys = ref<DataTableRowKey[]>([]);
@@ -166,10 +168,13 @@ const triggerBrowserDownload = (url: string) => {
   document.body.removeChild(anchor);
 };
 
+let listRequest = 0;
 const fetchList = async (path?: string) => {
+  const request = ++listRequest;
   loading.value = true;
   try {
     const data = await fileBrowserApi.list(path);
+    if (request !== listRequest) return;
     items.value = data.list;
     rootPath.value = data.rootPath;
     currentPath.value = data.currentPath;
@@ -177,11 +182,12 @@ const fetchList = async (path?: string) => {
     deleteEnabled.value = data.deleteEnabled;
     checkedRowKeys.value = [];
   } catch (error: any) {
+    if (request !== listRequest) return;
     notice.error({
       title: error?.message || error || "获取文件列表失败",
     });
   } finally {
-    loading.value = false;
+    if (request === listRequest) loading.value = false;
   }
 };
 
@@ -443,9 +449,6 @@ const columns = computed<DataTableColumns<FileBrowserItem>>(() => [
   },
 ]);
 
-onMounted(() => {
-  fetchList();
-});
 const markWatch = async (row: FileBrowserItem) => {
   try {
     const { videoId } = await commonApi.applyVideoId(row.path);
@@ -460,11 +463,22 @@ const markWatch = async (row: FileBrowserItem) => {
     notice.error({ title: String(error?.message || error || "更新观看状态失败") });
   }
 };
+
 const refreshWatch = () => {
-  if (!loading.value) void fetchList(currentPath.value || undefined);
+  if (route.name === "FileBrowser" && !loading.value && !deleting.value) {
+    void fetchList(currentPath.value || undefined);
+  }
 };
 onMounted(() => window.addEventListener("focus", refreshWatch));
 onBeforeUnmount(() => window.removeEventListener("focus", refreshWatch));
+
+watch(
+  [() => route.name, () => route.query.path],
+  ([name, path]) => {
+    if (name === "FileBrowser") void fetchList(typeof path === "string" ? path : undefined);
+  },
+  { immediate: true },
+);
 </script>
 
 <style scoped>

@@ -88,6 +88,7 @@ export interface GetRecorderArgs {
   id: RecoderConfig["id"];
 }
 export type GetRecorderResp = RecoderConfig;
+export type GetRecorderInfoResp = ClientRecorder;
 
 export type AddRecorderArgs = Omit<RecoderConfig, "id">;
 export type AddRecorderResp = ClientRecorder;
@@ -105,6 +106,7 @@ export type UpdateRecorderArgs = Pick<
   | "disableProvideCommentsWhenRecording"
   | "saveGiftDanma"
   | "saveSCDanma"
+  | "saveDanmaStats2DB"
   | "segment"
   | "sendToWebhook"
   | "uid"
@@ -132,6 +134,7 @@ export type UpdateRecorderArgs = Pick<
   | "weight"
   | "debugLevel"
   | "api"
+  | "cookieMode"
 >;
 export type UpdateRecorderResp = ClientRecorder;
 
@@ -221,6 +224,14 @@ export interface QueryStreamerDetailResp extends StreamerDetailResponse {
   recorderInfo: ClientRecorder | null;
 }
 
+export interface QueryRecordCalendarArgs {
+  recorderId: RecoderConfig["id"];
+  startTime: number;
+  endTime: number;
+}
+
+export type QueryRecordCalendarResp = number[];
+
 export interface BatchStartRecordArgs {
   ids: string[];
 }
@@ -297,9 +308,17 @@ export type RecorderAPI = {
     Args: GetRecentRecordFolderArgs;
     Resp: GetRecentRecordFolderResp;
   };
+  getRecorderInfo: {
+    Args: GetRecorderArgs;
+    Resp: GetRecorderInfoResp;
+  };
   queryStreamerDetail: {
     Args: QueryStreamerDetailArgs;
     Resp: QueryStreamerDetailResp;
+  };
+  queryRecordCalendar: {
+    Args: QueryRecordCalendarArgs;
+    Resp: QueryRecordCalendarResp;
   };
   // getManager: {
   //   Args: GetManagerArgs;

@@ -26,14 +26,48 @@ import artplayerPluginAssJS from "artplayer-plugin-assjs";
 import artplayerPluginHeatmap from "./artplayer-plugin-heatmap";
 import artplayerPluginTimestamp from "./artplayer-timestamp";
 import artplayerPluginDanmuku from "artplayer-plugin-danmuku";
+import type { Option as DanmukuOption, Result as DanmukuResult } from "artplayer-plugin-danmuku";
 import artplayerPluginHlsControl from "artplayer-plugin-hls-control";
 import artplayerPluginSubtitle from "./artplayer-plugin-subtitle";
 import artplayerPluginChapter from "./artplayer-plugin-chapter";
+import { useStorage } from "@vueuse/core";
+
+type DanmukuSettings = Pick<
+  DanmukuOption,
+  | "visible"
+  | "modes"
+  | "opacity"
+  | "margin"
+  | "fontSize"
+  | "speed"
+  | "antiOverlap"
+  | "synchronousPlayback"
+  | "mode"
+  | "color"
+>;
+
+const getDanmukuSettings = (option: DanmukuOption): DanmukuSettings => ({
+  visible: option.visible,
+  modes: option.modes,
+  opacity: option.opacity,
+  margin: option.margin,
+  fontSize: option.fontSize,
+  speed: option.speed,
+  antiOverlap: option.antiOverlap,
+  synchronousPlayback: option.synchronousPlayback,
+  mode: option.mode,
+  color: option.color,
+});
+
+const danmukuSettings = useStorage<Partial<DanmukuSettings>>("artplayer-danmuku-settings", {});
 
 const props = withDefaults(
   defineProps<{
     option: {
       fullscreen?: boolean;
+      muted?: boolean;
+      volume?: number;
+      mutex?: boolean;
       url?: string;
       type?: string;
       autoplay?: boolean;
@@ -114,6 +148,7 @@ onMounted(async () => {
           heatmap: false,
           fontSize: 16,
           speed: 10, // 插件以穿过屏幕的秒数表示速度：10 对应「极慢」。
+          ...danmukuSettings.value,
         }),
       );
     }
@@ -188,7 +223,7 @@ onMounted(async () => {
     url: props?.option?.url ?? "",
     type: props?.option?.type ?? "",
     isLive: props.isLive,
-    setting: true,
+    setting: props.isLive ? false : true,
     playbackRate: props.isLive ? false : true,
     autoplay: props.isLive ? true : false,
     playsInline: true,
@@ -280,6 +315,25 @@ ${tsFile}
   instance.artplayerTimestamp = instance?.plugins?.artplayerTimestamp;
   // @ts-ignore
   instance.artplayerPluginChapter = instance?.plugins?.artplayerPluginChapter;
+
+  if (props.plugins?.includes("danmuku")) {
+    let previousSettings = getDanmukuSettings(
+      (instance.plugins.artplayerPluginDanmuku as DanmukuResult).option,
+    );
+    instance.on("artplayerPluginDanmuku:config", (option) => {
+      const settings = getDanmukuSettings(option as DanmukuOption);
+      const updatedSettings = { ...danmukuSettings.value };
+      let changed = false;
+      for (const key of Object.keys(settings) as (keyof DanmukuSettings)[]) {
+        if (JSON.stringify(settings[key]) !== JSON.stringify(previousSettings[key])) {
+          Object.assign(updatedSettings, { [key]: settings[key] });
+          changed = true;
+        }
+      }
+      if (changed) danmukuSettings.value = updatedSettings;
+      previousSettings = settings;
+    });
+  }
 
   // console.log("Artplayer instance created:", instance);
 
