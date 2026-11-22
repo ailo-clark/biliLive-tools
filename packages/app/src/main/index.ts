@@ -18,12 +18,13 @@ import {
 } from "electron";
 import { createContainer } from "awilix";
 
-import installExtension from "electron-devtools-installer";
+import { installExtension } from "electron-devtools-installer";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 
 import log from "./utils/log";
 import { notify } from "./utils/index";
 import { PowerSaveController } from "./utils/powerSave";
+import { FileDialogHistory, type FileDialogPaths } from "./utils/fileDialogHistory";
 import { init } from "@biliLive-tools/shared";
 import { serverStart } from "@biliLive-tools/http";
 
@@ -40,6 +41,9 @@ import type { Theme, GlobalConfig } from "@biliLive-tools/types";
 export let mainWin: BrowserWindow;
 export let container = createContainer();
 const powerSaveController = new PowerSaveController(powerSaveBlocker);
+const fileDialogHistory = new FileDialogHistory(
+  new Store<FileDialogPaths>({ name: "file-dialog-state" }),
+);
 
 const SENTRY_CRASH_DSN =
   "https://aa05399bf7cf8b619177be3284d28fc8@o4511547045576704.ingest.us.sentry.io/4511547052720128";
@@ -58,6 +62,9 @@ const getSentryMinidumpSubmitURL = (dsn: string) => {
     return undefined;
   }
 };
+
+// 避免多个窗口的 SSE 长连接占满本地 HTTP 服务的连接池。
+app.commandLine.appendSwitch("ignore-connections-limit", "127.0.0.1");
 
 contextMenu({
   showSelectAll: false,
@@ -127,6 +134,7 @@ function createSubWindow(options: {
   routeName: string;
   hideAside?: boolean;
   hideMenuBar?: boolean;
+  hideTitleBar?: boolean;
   maximized?: boolean;
   query?: Record<string, string>;
 }) {
@@ -148,7 +156,10 @@ function createSubWindow(options: {
       sandbox: false,
       webSecurity: false,
     },
+    width: 900,
+    height: 750,
     autoHideMenuBar: hideMenuBar,
+    ...(options.hideTitleBar ? { titleBarStyle: "hidden" as const } : {}),
   });
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
@@ -873,11 +884,13 @@ const openDirectory = async (
 ) => {
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWin, {
     ...opts,
+    defaultPath: fileDialogHistory.getDefaultPath(opts.defaultPath),
     properties: ["openDirectory"],
   });
   if (canceled) {
     return;
   } else {
+    fileDialogHistory.remember("openDirectory", filePaths[0]);
     return filePaths[0];
   }
 };
@@ -890,19 +903,25 @@ const openFile = async (_event: IpcMainInvokeEvent, options: OpenDialogOptions) 
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWin, {
     properties,
     ...options,
+    defaultPath: fileDialogHistory.getDefaultPath(options.defaultPath),
   });
   if (canceled) {
     return;
   } else {
+    fileDialogHistory.remember("openFile", filePaths[0]);
     return filePaths;
   }
 };
 
 const saveDialog = async (_event: IpcMainInvokeEvent, options: SaveDialogOptions) => {
-  const { canceled, filePath } = await dialog.showSaveDialog(mainWin, options);
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWin, {
+    ...options,
+    defaultPath: fileDialogHistory.getDefaultPath(options.defaultPath),
+  });
   if (canceled) {
     return;
   } else {
+    fileDialogHistory.remember("save", filePath);
     return filePath;
   }
 };

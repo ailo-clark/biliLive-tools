@@ -109,6 +109,10 @@ export default class RecorderConfig {
           } else if (setting.providerId === "TikTok") {
             return get(globalConfig, "tiktok.cookie");
           }
+        } else if (key === "cookieMode") {
+          if (setting.providerId === "DouYin") {
+            return get(globalConfig, "douyin.cookieMode");
+          }
         } else if (key === "doubleScreen") {
           if (setting.providerId === "DouYin") {
             return get(globalConfig, "douyin.doubleScreen");
@@ -234,6 +238,7 @@ export default class RecorderConfig {
       disableProvideCommentsWhenRecording: disableProvideCommentsWhenRecording,
       saveGiftDanma: getValue("saveGiftDanma") ?? false,
       saveSCDanma: getValue("saveSCDanma") ?? true,
+      saveDanmaStats2DB: getValue("saveDanmaStats2DB") ?? false,
       saveCover: getValue("saveCover") ?? false,
       convert2Mp4: getValue("convert2Mp4") ?? false,
       segment: getValue("segment") ?? 90,
@@ -243,6 +248,7 @@ export default class RecorderConfig {
       debugLevel: getValue("debugLevel") ?? "none",
       recorderType: getValue("recorderType") ?? "ffmpeg",
       auth: auth,
+      cookieMode: getValue("cookieMode") ?? "all",
       useM3U8Proxy: getValue("useM3U8Proxy") ?? false,
       customHost: getValue("customHost"),
       segmentOnTitleChange: getValue("segmentOnTitleChange") ?? false,

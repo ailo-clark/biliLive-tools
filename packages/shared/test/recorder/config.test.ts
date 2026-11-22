@@ -31,6 +31,7 @@ const defaultRecorderConfig = {
   disableProvideCommentsWhenRecording: true,
   saveGiftDanma: false,
   saveSCDanma: true,
+  saveDanmaStats2DB: false,
   saveCover: false,
   segment: "90",
   videoFormat: "auto" as const,
@@ -76,6 +77,20 @@ const buildRecorders = (
 };
 
 const globalFollowCases = [
+  {
+    title: "弹幕统计入库：saveDanmaStats2DB",
+    key: "saveDanmaStats2DB",
+    globalValue: true,
+    localValue: false,
+    providerIds: allProviderIds,
+  },
+  {
+    title: "弹幕统计入库（单独开启）：saveDanmaStats2DB",
+    key: "saveDanmaStats2DB",
+    globalValue: false,
+    localValue: true,
+    providerIds: allProviderIds,
+  },
   {
     title: "转封装为MP4：convert2Mp4",
     key: "convert2Mp4",
@@ -225,6 +240,37 @@ describe("RecorderConfig", () => {
   });
 
   describe("配置", () => {
+    describe("抖音 Cookie模式", () => {
+      it.each([
+        { globalMode: undefined, localMode: undefined, follow: true, expected: "all" },
+        { globalMode: "stream", localMode: "danma", follow: true, expected: "stream" },
+        { globalMode: "stream", localMode: "danma", follow: false, expected: "danma" },
+        { globalMode: "danma", localMode: "all", follow: false, expected: "all" },
+      ])("全局 $globalMode，独立 $localMode，跟随 $follow", (testCase) => {
+        mockAppConfig.get.mockImplementation((key: string) => {
+          if (key === "recorder") {
+            return { douyin: { cookie: "global-cookie", cookieMode: testCase.globalMode } };
+          }
+          if (key === "recorders") {
+            return [
+              {
+                id: "douyin",
+                providerId: "DouYin",
+                channelId: "123",
+                cookieMode: testCase.localMode,
+                noGlobalFollowFields: testCase.follow ? [] : ["cookieMode"],
+              },
+            ];
+          }
+          return null;
+        });
+
+        const result = recorderConfig.get("douyin");
+        expect(result?.cookieMode).toBe(testCase.expected);
+        expect(result?.auth).toBe("global-cookie");
+      });
+    });
+
     it("应该返回 null 当找不到对应的录制器配置时", () => {
       const result = recorderConfig.get("non_existent_id");
       expect(result).toBeNull();
